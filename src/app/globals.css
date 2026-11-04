@@ -1,0 +1,151 @@
+@import "tailwindcss";
+
+/*
+ * Prospector design tokens (SRS section 4A).
+ * Every colour, spacing value and radius is defined once here, so a theme change is one file.
+ * To apply the Agentify ERP palette, change only the brand-* values below.
+ */
+:root {
+  /* Brand and neutrals */
+  --brand-900: #0d1a1c; /* sidebar background */
+  --brand-700: #134e4a; /* sidebar hover, headings on light surfaces */
+  --brand-600: #0f766e; /* primary buttons, active tab, links */
+  --brand-100: #ccfbf1; /* selected row, soft highlights */
+  --brand-50: #f0fdfa; /* hover on light surfaces */
+  --whatsapp-500: #25d366; /* WhatsApp actions and channel chip only */
+  --page: #f6f7f9;
+  --surface: #ffffff;
+  --border: #e5e7eb;
+  --text-primary: #111827;
+  --text-secondary: #6b7280;
+  --text-disabled: #9ca3af;
+
+  /* Status: text/icon and soft background */
+  --success: #15803d;
+  --success-soft: #dcfce7;
+  --warning: #b45309;
+  --warning-soft: #fef3c7;
+  --error: #b91c1c;
+  --error-soft: #fee2e2;
+  --info: #1d4ed8;
+  --info-soft: #dbeafe;
+  --neutral: #4b5563;
+  --neutral-soft: #f3f4f6;
+
+  /* Products */
+  --classwell: #4f46e5;
+  --classwell-soft: #e0e7ff;
+  --vetlin: #047857;
+  --vetlin-soft: #d1fae5;
+  --postwala: #be185d;
+  --postwala-soft: #fce7f3;
+
+  /* Chart series when not split by product */
+  --chart-1: var(--brand-600);
+  --chart-2: #0ea5e9;
+  --chart-3: #f59e0b;
+  --chart-4: #8b5cf6;
+
+  /* Layout */
+  --sidebar-width: 256px;
+  --sidebar-rail: 64px;
+  --topbar-height: 56px;
+  --content-max: 1440px;
+}
+
+@theme inline {
+  --color-brand-900: var(--brand-900);
+  --color-brand-700: var(--brand-700);
+  --color-brand-600: var(--brand-600);
+  --color-brand-100: var(--brand-100);
+  --color-brand-50: var(--brand-50);
+  --color-whatsapp: var(--whatsapp-500);
+  --color-page: var(--page);
+  --color-surface: var(--surface);
+  --color-border: var(--border);
+  --color-fg: var(--text-primary);
+  --color-fg-muted: var(--text-secondary);
+  --color-fg-disabled: var(--text-disabled);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-error: var(--error);
+  --color-error-soft: var(--error-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-neutral: var(--neutral);
+  --color-neutral-soft: var(--neutral-soft);
+  --color-classwell: var(--classwell);
+  --color-classwell-soft: var(--classwell-soft);
+  --color-vetlin: var(--vetlin);
+  --color-vetlin-soft: var(--vetlin-soft);
+  --color-postwala: var(--postwala);
+  --color-postwala-soft: var(--postwala-soft);
+
+  /* Spacing scale: 4, 8, 12, 16, 24, 32 px only (Tailwind 1, 2, 3, 4, 6, 8). */
+  --spacing: 4px;
+
+  /* Radius: 8 px inputs and buttons, 12 px cards and modals, full for chips. */
+  --radius-control: 8px;
+  --radius-card: 12px;
+
+  /* Typography */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+  --font-urdu: var(--font-nastaliq), "Noto Nastaliq Urdu", serif;
+  --text-title: 20px;
+  --text-title--line-height: 1.4;
+  --text-section: 16px;
+  --text-section--line-height: 1.5;
+  --text-body: 14px;
+  --text-body--line-height: 1.5;
+  --text-helper: 12px;
+  --text-helper--line-height: 1.5;
+  --text-kpi: 28px;
+  --text-kpi--line-height: 1.2;
+
+  --shadow-float: 0 12px 32px rgb(17 24 39 / 0.16);
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--page);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Tabular figures for every number column, counter and cost. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Urdu text and previews switch to right-to-left. */
+[lang="ur"],
+.urdu {
+  direction: rtl;
+  text-align: right;
+  font-family: var(--font-urdu);
+  line-height: 2;
+}
+
+/* Visible focus ring on every interactive element. */
+:focus-visible {
+  outline: 2px solid var(--brand-600);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
