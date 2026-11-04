@@ -27,7 +27,17 @@ npm run dev
 
 Open the invite email (locally at http://127.0.0.1:54324, the Mailpit inbox), set your password and sign in.
 
-## Set up the hosted Supabase project
+## Hosting
+
+**Now:** the database, sign-in and realtime run on a hosted Supabase project. The web app (and later
+Redis and the workers) runs on the Contabo VPS under PM2, as in sections 1, 2, 4 and 5 of
+[`docs/deploy-vps.md`](docs/deploy-vps.md), with the hosted Supabase values in `.env.local`.
+
+**Later:** everything moves to the VPS with self-hosted Supabase in Docker. The same guide covers the
+setup and how to move the data across (section 7). The app code does not change; only the three
+Supabase environment variables do.
+
+### Set up the hosted Supabase project
 
 1. Create a Supabase project and link it: `npx supabase link --project-ref <ref>`.
 2. Push the schema: `npx supabase db push`. Every database change is a migration in `supabase/migrations`.
@@ -41,7 +51,7 @@ Open the invite email (locally at http://127.0.0.1:54324, the Mailpit inbox), se
 
 | Variable | What it is |
 |---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL (later: your self-hosted API gateway) |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon (public) key |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key. Server only. |
 | `SETTINGS_ENCRYPTION_KEY` | 32 random bytes, base64 (`openssl rand -base64 32`). Encrypts API keys saved in Settings. Back it up. |
