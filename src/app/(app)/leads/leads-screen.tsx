@@ -18,6 +18,7 @@ import { FILTER_KEYS, filtersToParams, type LeadFilters } from "@/lib/leads/filt
 import { LEAD_COLUMN_LABELS, LEAD_COLUMNS_COOKIE } from "@/lib/leads/columns";
 import { formatPkDate, formatPkDateTime } from "@/lib/utils";
 import { addLeadsToDnc, addTags, assignOwner, changeStatus, deleteLeads, deleteView, saveView, verifyLeadEmails } from "./actions";
+import { createCampaignFromLeads } from "../campaigns/email/actions";
 
 export type LeadRow = {
   id: string;
@@ -73,6 +74,7 @@ export function LeadsScreen({
   hidden: initialHidden,
   canDelete,
   canVerify,
+  canEmail,
 }: {
   rows: LeadRow[];
   total: number;
@@ -88,6 +90,7 @@ export function LeadsScreen({
   hidden: string[];
   canDelete: boolean;
   canVerify: boolean;
+  canEmail: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -257,9 +260,17 @@ export function LeadsScreen({
           const ids = sel.map((r) => r.id);
           return (
             <>
-              <Button size="sm" disabled title="Email campaigns arrive in step 5">
-                <Mail /> Add to email campaign
-              </Button>
+              {canEmail ? (
+                <Button size="sm" loading={busy} disabled={busy} onClick={async () => {
+                  setBusy(true);
+                  const r = await createCampaignFromLeads(ids);
+                  setBusy(false);
+                  if (!r.ok) return toast.error(r.error);
+                  router.push(`/campaigns/email/${r.id}`);
+                }}>
+                  <Mail /> Add to email campaign
+                </Button>
+              ) : null}
               <Button size="sm" disabled title="WhatsApp campaigns arrive in step 6">
                 <MessageCircle /> Add to WhatsApp campaign
               </Button>

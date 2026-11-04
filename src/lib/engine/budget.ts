@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { checkBudgets, googleCallCostPkr, type BudgetLimit, type BudgetVerdict, type GoogleRate } from "@/lib/engine/estimate";
 import { toPkr, type Currency } from "@/lib/costs/money";
 import type { Product } from "@/components/ui/chips";
+import { capPeriod } from "@/lib/email/limits";
 
 /**
  * Reads Google prices, usage and budgets at the moment of use (SRS 8.4) and decides whether a
@@ -104,7 +105,7 @@ type BudgetRow = {
 };
 
 /** Budgets that cover this provider's spend for this product this month, with their spend so far. */
-async function applicableLimits(db: SupabaseClient, provider: string, product: Product | null, monthStart: string, usdToPkr: number | null): Promise<BudgetLimit[] | { error: string }> {
+export async function applicableLimits(db: SupabaseClient, provider: string, product: Product | null, monthStart: string, usdToPkr: number | null): Promise<BudgetLimit[] | { error: string }> {
   const { data: budgets, error } = await db
     .from("budgets")
     .select("name, provider, product, channel, month, amount, currency, warn_pct, stop_pct")
@@ -143,4 +144,61 @@ async function applicableLimits(db: SupabaseClient, provider: string, product: P
     limits.push({ name: b.name, amountPkr, stopPct: Number(b.stop_pct), warnPct: Number(b.warn_pct), spentPkr: spent });
   }
   return limits;
+}
+
+export type EmailAllowance = {
+  ok: boolean;
+  message: string | null;
+  warning: string | null;
+  cap: number | null;
+  used: number;
+  remaining: number;
+  period: { start: string; end: string };
+};
+
+/**
+ * Before any email is queued (SRS 8.4): the Resend plan cap for this period, read from the cost
+ * tables, and any budget that covers Resend or all spend. Emails inside the plan have no per-email
+ * charge (the plan fee is a fixed cost), so a budget blocks only once it has reached its stop level.
+ */
+export async function checkEmailAllowance(db: SupabaseClient, product: Product | null, count: number, now = new Date()): Promise<EmailAllowance> {
+  const today = pkDate(now);
+  const { data: plan } = await db
+    .from("cost_plans")
+    .select("usage_cap, billing_day")
+    .eq("provider", "resend")
+    .eq("kind", "plan")
+    .eq("is_active", true)
+    .order("created_at")
+    .limit(1)
+    .maybeSingle();
+  const period = capPeriod(plan?.billing_day ?? null, today);
+  const base = { warning: null, used: 0, remaining: 0, period };
+  if (!plan || plan.usage_cap === null) {
+    return { ...base, ok: false, cap: null, message: "The Resend plan cap is not set. An Admin must enter it on the Costs screen before emails can be sent." };
+  }
+  const cap = Number(plan.usage_cap);
+  const { data: usedRaw } = await db.rpc("email_cap_usage", { p_period_start: period.start });
+  const used = Number(usedRaw ?? 0);
+  const remaining = Math.max(0, cap - used);
+  if (count > remaining) {
+    return {
+      ...base, ok: false, cap, used, remaining,
+      message: remaining === 0
+        ? `The Resend plan cap of ${cap.toLocaleString("en-PK")} emails is used up for this period (until ${period.end}). Raise the plan on the Costs screen or wait for the next period.`
+        : `This needs ${count.toLocaleString("en-PK")} emails but only ${remaining.toLocaleString("en-PK")} are left on the Resend plan this period (cap ${cap.toLocaleString("en-PK")}).`,
+    };
+  }
+  const { data: fxRow } = await db.rpc("rate_on", { p_provider: "fx", p_item: "usd_to_pkr", p_country: "PK", p_on: today });
+  const fx = (Array.isArray(fxRow) ? fxRow[0] : fxRow) as { rate: number | null } | null;
+  const limits = await applicableLimits(db, "resend", product, `${today.slice(0, 7)}-01`, fx?.rate != null ? Number(fx.rate) : null);
+  if ("error" in limits) return { ...base, ok: false, cap, used, remaining, message: limits.error };
+  for (const b of limits) {
+    if (b.spentPkr >= (b.amountPkr * b.stopPct) / 100) {
+      return { ...base, ok: false, cap, used, remaining, message: `The "${b.name}" budget has reached its stop level this month, so emails are paused. An Admin can raise it on the Costs screen.` };
+    }
+  }
+  const after = used + count;
+  const warning = after >= cap * 0.8 ? `After this, ${Math.round((after / cap) * 100)}% of the Resend plan cap is used for this period.` : null;
+  return { ok: true, message: null, warning, cap, used, remaining, period };
 }

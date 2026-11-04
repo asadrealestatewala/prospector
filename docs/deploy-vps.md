@@ -84,7 +84,7 @@ Create `/opt/prospector/.env.local` on the server:
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `ANON_KEY` from the Supabase `.env` |
 | `SUPABASE_SERVICE_ROLE_KEY` | `SERVICE_ROLE_KEY` from the Supabase `.env` |
 | `SETTINGS_ENCRYPTION_KEY` | `openssl rand -base64 32`; keep a backup |
-| `APP_URL` | `https://prospector.yourdomain.com` |
+| `APP_URL` | `https://prospector.yourdomain.com`. The workers need it too, for unsubscribe links |
 | `REDIS_URL` | `redis://127.0.0.1:6379` (the default, so it can be left out) |
 | `PLACES_CONCURRENCY` | Cities searched at the same time, default `3` |
 | `CRAWL_CONCURRENCY` | Websites crawled at the same time, default `5`. Lower it on a small server |

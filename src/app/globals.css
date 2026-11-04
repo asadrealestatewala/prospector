@@ -149,3 +149,12 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Email template editor body (Templates). Mirrors the spacing of the sent email. */
+.prose-email p { margin: 0 0 0.75em; }
+.prose-email h2 { font-size: 18px; font-weight: 600; margin: 0.75em 0 0.5em; }
+.prose-email h3 { font-size: 16px; font-weight: 600; margin: 0.75em 0 0.5em; }
+.prose-email ul { list-style: disc; padding-inline-start: 1.5em; margin: 0 0 0.75em; }
+.prose-email ol { list-style: decimal; padding-inline-start: 1.5em; margin: 0 0 0.75em; }
+.prose-email blockquote { border-inline-start: 3px solid var(--color-border); padding-inline-start: 0.75em; color: var(--color-fg-muted); }
+.prose-email a { color: var(--color-brand-600); text-decoration: underline; }

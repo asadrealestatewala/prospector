@@ -589,6 +589,67 @@ function PricingTab({ plans, rates, budgets, changes, today }: { plans: PlanRow[
   );
 }
 
+export type EmailUsage = {
+  cap: number | null;
+  period: { start: string; end: string };
+  sent: number;
+  queued: number;
+  sentToday: number;
+  byProduct: Record<string, number>;
+};
+
+const DAY_MS = 86_400_000;
+
+/** Costs, Email (Resend): usage against the plan cap for the current billing period (SRS 7.12). */
+function EmailUsageTab({ usage: u, plan, today }: { usage: EmailUsage; plan: PlanRow | null; today: string }) {
+  const days = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / DAY_MS);
+  const periodDays = Math.max(1, days(u.period.start, u.period.end));
+  const elapsed = Math.min(periodDays, Math.max(1, days(u.period.start, today) + 1));
+  const projected = Math.round((u.sent / elapsed) * periodDays);
+  const remaining = u.cap === null ? null : Math.max(0, u.cap - u.sent - u.queued);
+  const rows: [string, string][] = [
+    ["Plan", plan ? plan.plan_name : "Not set"],
+    ["Billing period", `${formatPkDate(u.period.start)} to ${formatPkDate(u.period.end)}`],
+    ["Sent this period", formatNumber(u.sent)],
+    ["Sent today", formatNumber(u.sentToday)],
+    ["Queued now", formatNumber(u.queued)],
+    ["Cap", u.cap === null ? "Not set, so sending is blocked" : formatNumber(u.cap)],
+    ["Left this period", remaining === null ? "" : formatNumber(remaining)],
+    ["Projected by period end", `${formatNumber(projected)} at the current pace`],
+    ["Extra cost", "None. Sending stops at the cap, so no overage is charged."],
+  ];
+  return (
+    <div className="grid gap-6 xl:grid-cols-2">
+      <Card>
+        <CardHeader title="Email (Resend)" description="Counts include campaign, one-off and test emails. Queued emails are held against the cap." />
+        <CardBody className="flex flex-col gap-4">
+          {u.cap !== null ? (
+            <ProgressBar value={u.sent + u.queued} max={Math.max(1, u.cap)} label={`${formatNumber(u.sent + u.queued)} of ${formatNumber(u.cap)} used or queued`} />
+          ) : null}
+          {u.cap !== null && projected > u.cap ? (
+            <p className="rounded-control bg-warning-soft px-3 py-2 text-body text-warning" role="status">At this pace the cap runs out before the period ends. Sending will pause until the next period or a larger plan.</p>
+          ) : null}
+          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-body">
+            {rows.map(([k, v]) => (
+              <React.Fragment key={k}><dt className="text-fg-muted">{k}</dt><dd>{v}</dd></React.Fragment>
+            ))}
+          </dl>
+        </CardBody>
+      </Card>
+      <Card>
+        <CardHeader title="Sent by product" description="This billing period." />
+        <CardBody>
+          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-body">
+            {(["classwell", "vetlin", "postwala"] as const).map((p) => (
+              <React.Fragment key={p}><dt className="text-fg-muted">{p === "classwell" ? "Classwell" : p === "vetlin" ? "Vetlin" : "Postwala"}</dt><dd>{formatNumber(u.byProduct[p] ?? 0)}</dd></React.Fragment>
+            ))}
+          </dl>
+        </CardBody>
+      </Card>
+    </div>
+  );
+}
+
 export function CostsScreen({
   today,
   month,
@@ -598,6 +659,7 @@ export function CostsScreen({
   changes,
   usagePkr,
   spendByProduct,
+  emailUsage,
 }: {
   today: string;
   month: string;
@@ -607,11 +669,11 @@ export function CostsScreen({
   changes: ChangeRow[];
   usagePkr: number;
   spendByProduct: Record<string, number>;
+  emailUsage: EmailUsage;
 }) {
   const [currencyView, setCurrencyView] = React.useState<Currency>("PKR");
   const fx = currentRates(rates, today).get("fx|usd_to_pkr|*")?.rate ?? null;
   const later = [
-    { v: "email", label: "Email (Resend)", msg: "Emails sent, remaining cap and projected month-end usage appear here once email sending is built in step 5. The Resend plan and cap are already editable under Pricing and budgets." },
     { v: "whatsapp", label: "WhatsApp (Meta)", msg: "Message counts and cost by category appear here once WhatsApp sending is built in step 6. Per-category rates are already editable under Pricing and budgets." },
     { v: "platform", label: "Platform service charges", msg: "The renewal calendar and alerts arrive in step 9. Fixed fees are already editable under Pricing and budgets." },
     { v: "google", label: "Google APIs", msg: "Daily and monthly calls and spend against the free allowance appear here once the Places worker runs in step 2." },
@@ -622,7 +684,10 @@ export function CostsScreen({
       <PageHeader title="Costs" description="Every price, cap and budget is editable here. Nothing is fixed in code." />
       <SummaryHeader plans={plans} budgets={budgets} usdToPkr={fx === null ? null : Number(fx)} usagePkr={usagePkr} spendByProduct={spendByProduct} month={month} currency={currencyView} onCurrency={setCurrencyView} />
       <Tabs defaultValue="pricing">
-        <TabsList tabs={[...later.map((l) => ({ value: l.v, label: l.label })), { value: "pricing", label: "Pricing and budgets" }]} />
+        <TabsList tabs={[{ value: "email", label: "Email (Resend)" }, ...later.map((l) => ({ value: l.v, label: l.label })), { value: "pricing", label: "Pricing and budgets" }]} />
+        <TabsContent value="email">
+          <EmailUsageTab usage={emailUsage} plan={plans.find((p) => p.provider === "resend" && p.kind === "plan" && p.is_active) ?? null} today={today} />
+        </TabsContent>
         {later.map((l) => (
           <TabsContent key={l.v} value={l.v}>
             <Card>

@@ -3,6 +3,8 @@ import { requireScreen } from "@/lib/auth/session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SettingsScreen, type SettingRow } from "./settings-screen";
 import type { CityGroup } from "@/lib/engine/cities";
+import { readEmailLimits } from "@/lib/email/limits";
+import type { SenderRow } from "./email-tabs";
 
 export const metadata: Metadata = { title: "Settings" };
 
@@ -19,5 +21,8 @@ export default async function SettingsPage() {
   const scoring = { website: 10, email: 5, verified_email: 20, whatsapp: 20, reviews: 10, reviews_min: 20, recent_reply: 30, recent_reply_days: 14, ...((value("scoring.rules") as object) ?? {}) };
   const autoVerify = Boolean((value("verification.options") as { auto_verify_new?: boolean } | null)?.auto_verify_new);
   const cityGroups = Array.isArray(value("search.city_groups")) ? (value("search.city_groups") as CityGroup[]) : [];
-  return <SettingsScreen autoVerify={autoVerify} scoring={scoring} cityGroups={cityGroups} settings={(data ?? []) as SettingRow[]} webhookUrl={`${appUrl}/api/webhooks/botlinkd`} resendWebhookUrl={`${appUrl}/api/webhooks/resend`} encryptionReady={encryptionReady} />;
+  const { data: senders } = await supabase.from("email_senders").select("id, from_name, from_email, reply_to, is_active, domain, warmup_started_on").order("created_at");
+  const footer = typeof value("branding.email_footer") === "string" ? (value("branding.email_footer") as string) : "";
+  const priceLines = (value("products.price_lines") as Record<string, string> | null) ?? {};
+  return <SettingsScreen emailLimits={readEmailLimits(value("email.limits"))} senders={(senders ?? []) as SenderRow[]} footer={footer} priceLines={priceLines} autoVerify={autoVerify} scoring={scoring} cityGroups={cityGroups} settings={(data ?? []) as SettingRow[]} webhookUrl={`${appUrl}/api/webhooks/botlinkd`} resendWebhookUrl={`${appUrl}/api/webhooks/resend`} encryptionReady={encryptionReady} />;
 }

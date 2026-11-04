@@ -8,10 +8,13 @@ export const PLACES_QUEUE = "places-search";
 export const MAINTENANCE_QUEUE = "maintenance";
 export const CRAWL_QUEUE = "website-crawl";
 export const VERIFY_QUEUE = "email-verify";
+export const EMAIL_QUEUE = "email-send";
 
 export type PlacesJob = { searchCityId: string };
 export type CrawlJob = { crawlJobId: string };
 export type VerifyJob = { contactId: string };
+/** A campaign email (recipientId) or a one-off email from Lead Detail (messageId). */
+export type EmailJob = { recipientId: string } | { messageId: string };
 
 /** SRS 8.3: a website is tried once and retried three times, then marked failed. */
 export const CRAWL_ATTEMPTS = 4;
@@ -29,7 +32,7 @@ export function redisConnection(): ConnectionOptions {
   };
 }
 
-const g = globalThis as unknown as { __placesQueue?: Queue<PlacesJob>; __crawlQueue?: Queue<CrawlJob>; __verifyQueue?: Queue<VerifyJob> };
+const g = globalThis as unknown as { __placesQueue?: Queue<PlacesJob>; __crawlQueue?: Queue<CrawlJob>; __verifyQueue?: Queue<VerifyJob>; __emailQueue?: Queue<EmailJob> };
 
 export function placesQueue(): Queue<PlacesJob> {
   if (!g.__placesQueue) {
@@ -95,7 +98,40 @@ export async function enqueueVerifications(rows: { id: string; enqueuedAt: strin
   );
 }
 
-async function withTimeout<T>(p: Promise<T>): Promise<T> {
+export function emailQueue(): Queue<EmailJob> {
+  if (!g.__emailQueue) {
+    g.__emailQueue = new Queue<EmailJob>(EMAIL_QUEUE, {
+      connection: redisConnection(),
+      defaultJobOptions: {
+        attempts: 3,
+        backoff: { type: "exponential", delay: 60_000 },
+        removeOnComplete: { age: 7 * 24 * 3600, count: 50000 },
+        removeOnFail: { age: 30 * 24 * 3600 },
+      },
+    });
+  }
+  return g.__emailQueue;
+}
+
+/** Campaign emails, each with a delay that keeps the gap between emails. */
+export async function enqueueCampaignEmails(rows: { id: string; queuedAt: string; delayMs: number }[]) {
+  if (rows.length === 0) return;
+  await withTimeout(
+    emailQueue().addBulk(
+      rows.map((r) => ({
+        name: "campaign",
+        data: { recipientId: r.id },
+        opts: { jobId: `email-r-${r.id}-${new Date(r.queuedAt).getTime()}`, delay: Math.max(0, Math.round(r.delayMs)) },
+      })),
+    ),
+  );
+}
+
+export async function enqueueOneOffEmail(messageId: string) {
+  await withTimeout(emailQueue().add("one-off", { messageId }, { jobId: `email-m-${messageId}` }));
+}
+
+export async function withTimeout<T>(p: Promise<T>): Promise<T> {
   // Redis being down must not leave the screen waiting forever.
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {

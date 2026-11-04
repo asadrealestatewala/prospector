@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC_PATHS = ["/login", "/forgot-password", "/auth/callback", "/auth/confirm", "/api/webhooks", "/api/health"];
+const PUBLIC_PATHS = ["/login", "/forgot-password", "/auth/callback", "/auth/confirm", "/api/webhooks", "/api/health", "/api/unsubscribe/", "/u/"];
 
 /** Refreshes the Supabase session cookie and sends signed-out visitors to the login screen. */
 export async function updateSession(request: NextRequest) {

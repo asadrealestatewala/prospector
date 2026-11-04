@@ -6,6 +6,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList } from "@/components/ui/tabs";
 import type { CityGroup } from "@/lib/engine/cities";
+import { BrandingTab, LimitsTab, PriceLinesCard, SendersTab, type SenderRow } from "./email-tabs";
+import type { EmailLimits } from "@/lib/email/limits";
 import { DefaultsTab, type ScoringRules } from "./defaults-tab";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/input";
@@ -228,7 +230,7 @@ function IntegrationCard({ integration, rows, disabled, extra }: { integration: 
   );
 }
 
-export function SettingsScreen({ settings, webhookUrl, resendWebhookUrl, encryptionReady, scoring, cityGroups, autoVerify }: { settings: SettingRow[]; webhookUrl: string; resendWebhookUrl: string; encryptionReady: boolean; scoring: ScoringRules; cityGroups: CityGroup[]; autoVerify: boolean }) {
+export function SettingsScreen({ settings, webhookUrl, resendWebhookUrl, encryptionReady, scoring, cityGroups, autoVerify, emailLimits, senders, footer, priceLines }: { settings: SettingRow[]; webhookUrl: string; resendWebhookUrl: string; encryptionReady: boolean; scoring: ScoringRules; cityGroups: CityGroup[]; autoVerify: boolean; emailLimits: EmailLimits; senders: SenderRow[]; footer: string; priceLines: Record<string, string> }) {
   const rows = new Map(settings.map((s) => [s.key, s]));
   return (
     <>
@@ -245,7 +247,7 @@ export function SettingsScreen({ settings, webhookUrl, resendWebhookUrl, encrypt
         />
         <TabsContent value="defaults" className="flex flex-col gap-6">
           <DefaultsTab scoring={scoring} groups={cityGroups} autoVerify={autoVerify} />
-          <p className="text-helper text-fg-muted">Product price lines and follow-up gaps are added here in step 8, with the pipeline and follow-ups.</p>
+          <PriceLinesCard lines={priceLines} />
         </TabsContent>
         <TabsContent value="integrations" className="flex flex-col gap-6">
           {!encryptionReady ? (
@@ -268,24 +270,16 @@ export function SettingsScreen({ settings, webhookUrl, resendWebhookUrl, encrypt
                   i.id === "botlinkd" ? (
                     <CopyField id="botlinkd-webhook" label="Webhook address for BotLinkd" value={webhookUrl} hint="Paste this into BotLinkd so replies reach the Inbox. The receiver is built in step 6." />
                   ) : i.id === "resend" ? (
-                    <CopyField id="resend-webhook" label="Webhook address for Resend" value={resendWebhookUrl} hint="Add this in Resend for delivery events. The receiver is built in step 5." />
+                    <CopyField id="resend-webhook" label="Webhook address for Resend" value={resendWebhookUrl} hint="In Resend, Webhooks, add this address with the delivered, opened, clicked, bounced, complained and failed events, then paste the signing secret above." />
                   ) : null
                 }
               />
             ))}
           </div>
         </TabsContent>
-        {[
-          { v: "limits", step: "5 and 6", msg: "Daily limits, sending hours and the warm-up schedule are set here when the email and WhatsApp senders are built in steps 5 and 6." },
-          { v: "senders", step: "5 and 6", msg: "Sending domains, addresses and the connected WhatsApp number are added here in steps 5 and 6." },
-          { v: "branding", step: "5", msg: "Logo, colours and the email footer are set here in step 5, alongside email templates." },
-        ].map((t) => (
-          <TabsContent key={t.v} value={t.v}>
-            <Card>
-              <EmptyState icon={SlidersHorizontal} message={t.msg} />
-            </Card>
-          </TabsContent>
-        ))}
+        <TabsContent value="limits"><LimitsTab limits={emailLimits} /></TabsContent>
+        <TabsContent value="senders"><SendersTab senders={senders} /></TabsContent>
+        <TabsContent value="branding"><BrandingTab footer={footer} /></TabsContent>
       </Tabs>
     </>
   );
