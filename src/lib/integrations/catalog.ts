@@ -3,6 +3,7 @@ export type SecretKey =
   | "google.places_api_key"
   | "google.custom_search_api_key"
   | "resend.api_key"
+  | "resend.webhook_secret"
   | "botlinkd.app_key"
   | "botlinkd.auth_key"
   | "email_verification.api_key";
@@ -38,7 +39,10 @@ export const INTEGRATIONS: Integration[] = [
     id: "resend",
     name: "Resend",
     description: "Sends email and reports delivered, opened, clicked, bounced and complained.",
-    secrets: [{ key: "resend.api_key", label: "Resend API key", hint: "Starts with re_. Full access lets the test list your domains." }],
+    secrets: [
+      { key: "resend.api_key", label: "Resend API key", hint: "Starts with re_. Full access lets the test list your domains." },
+      { key: "resend.webhook_secret", label: "Webhook signing secret", hint: "From Resend, Webhooks, after adding the address below. Starts with whsec_." },
+    ],
   },
   {
     id: "botlinkd",

@@ -132,3 +132,42 @@ The crawler costs nothing per call, so it has no budget check.
   valid, risky (catch-all or unknown) or invalid, with a one-line reason. "Verify new emails automatically"
   is in Settings, Defaults. Paid checks need a price on Costs (provider `email_verification`, item
   `check`) and a budget; without them only the free checks run.
+
+## Email (step 5)
+
+**Set up once (Admin):**
+
+1. In Resend, verify a separate outreach domain with SPF, DKIM and DMARC (SRS 9.3). Turn on open and
+   click tracking for that domain in Resend if you want those counters.
+2. Settings, Integrations: enter the Resend API key.
+3. In Resend, add a webhook to `APP_URL/api/webhooks/resend` for the events `email.delivered`,
+   `email.opened`, `email.clicked`, `email.bounced`, `email.complained` and `email.failed`. Copy its
+   signing secret (it starts with `whsec_`) into Settings, Integrations, "Webhook signing secret".
+4. Settings, Sender identities: add at least one sender on the verified domain.
+5. Settings, Branding: enter the email footer (company name and postal address).
+6. Costs, Pricing and budgets: set the Resend plan's monthly cap and billing day. **No cap means no
+   sending.** An email budget is optional; if one is set, sending stops when it reaches its stop level.
+7. The workers need `APP_URL` so unsubscribe links point to the right address. Without it, campaigns pause.
+
+**Using it:**
+
+- **Templates** (sidebar): rich text with variables (`{{business_name}}`, `{{city}}`,
+  `{{contact_name|there}}`, `{{product_name}}`, `{{product_price}}`, `{{sender_name}}`), live preview,
+  test send, duplicate, A/B version and archive. English and Urdu (right to left). Three starter
+  templates are included. `{{product_price}}` comes from Settings, Defaults.
+- **Email Campaigns** (sidebar, or "Add to email campaign" on Leads): pick the product, template, sender
+  and a saved view, then build the audience. Leads on do-not-contact, opted out, without a verified email,
+  contacted recently, or sharing an address with another lead are skipped with the reason shown. Send now
+  or schedule (Pakistan time). The detail page shows live counters, every recipient, and Pause, Resume and
+  Stop all.
+- **Lead Detail, Send email**: one email to one lead through the same queue and checks.
+- **Costs, Email (Resend)**: sent this period, queued, cap left and projected period-end use.
+
+**Safeguards:** the do-not-contact list, consent and verification are checked again by the worker just
+before each email goes. The cap and budget are checked before queuing and again before sending. Sending
+keeps to the sending hours, the gap between emails, the daily limits and the warm-up schedule for each
+sending domain (Settings, Sending limits). A campaign pauses itself when bounces or spam reports pass their
+limits. Every email has an unsubscribe link and one-click unsubscribe headers. A hard bounce, a spam report
+or an unsubscribe adds the address to do-not-contact straight away.
+
+Follow-up emails are sent from step 8, and replies appear once the Inbox is built in step 7.

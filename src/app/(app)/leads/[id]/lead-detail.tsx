@@ -14,6 +14,7 @@ import { toast } from "@/components/ui/toaster";
 import { CONSENT_LABEL, LEAD_STATUS, LEAD_STATUSES, type LeadStatus } from "@/lib/engine/labels";
 import { cn, formatPkDateTime } from "@/lib/utils";
 import { addLeadsToDnc, addTags, assignOwner, changeStatus, removeTag, verifyLeadEmails } from "../actions";
+import { SendEmailDialog, type TemplateOption } from "./send-email-dialog";
 import { addContact, addNote, makePrimary, removeContact, updateLeadInfo, updatePlan } from "./actions";
 
 type Lead = {
@@ -72,6 +73,9 @@ export function LeadDetail({
   canSeeLeads,
   canVerify,
   canSeeConsent,
+  canEmail,
+  emailTemplates,
+  senders,
 }: {
   lead: Lead;
   contacts: ContactRow[];
@@ -82,6 +86,9 @@ export function LeadDetail({
   canSeeLeads: boolean;
   canVerify: boolean;
   canSeeConsent: boolean;
+  canEmail: boolean;
+  emailTemplates: TemplateOption[];
+  senders: { id: string; from_name: string; from_email: string }[];
 }) {
   const router = useRouter();
   const [busy, setBusy] = React.useState<string | null>(null);
@@ -91,6 +98,7 @@ export function LeadDetail({
   const [dncOpen, setDncOpen] = React.useState(false);
   const [lostOpen, setLostOpen] = React.useState(false);
   const [tagDraft, setTagDraft] = React.useState("");
+  const [emailOpen, setEmailOpen] = React.useState(false);
 
   async function run(label: string, fn: () => Promise<Result>, after?: () => void) {
     setBusy(label);
@@ -159,7 +167,9 @@ export function LeadDetail({
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button disabled title="Email sending arrives in step 5"><Mail /> Send email</Button>
+            {canEmail ? (
+              <Button disabled={emails.length === 0} title={emails.length === 0 ? "No email address" : undefined} onClick={() => setEmailOpen(true)}><Mail /> Send email</Button>
+            ) : null}
             <Button variant="whatsapp" disabled title="WhatsApp sending arrives in step 6"><MessageCircle /> Send WhatsApp</Button>
             {callNumber ? (
               <Button asChild onClick={() => setNoteOpen("call")}>
@@ -358,6 +368,16 @@ export function LeadDetail({
         onConfirm={() => run("dnc", () => addLeadsToDnc([lead.id]), () => setDncOpen(false))}
       />
       <LostDialog open={lostOpen} onOpenChange={setLostOpen} busy={busy === "status"} onSave={(reason) => run("status", () => changeStatus([lead.id], "lost", reason), () => setLostOpen(false))} />
+      {canEmail && emailOpen ? (
+        <SendEmailDialog
+          open={emailOpen}
+          onOpenChange={setEmailOpen}
+          leadId={lead.id}
+          emails={emails.map((c) => ({ value: c.value, verification: c.verification, blocked: c.blocked, optedOut: c.consent_state === "opted_out" }))}
+          templates={emailTemplates}
+          senders={senders}
+        />
+      ) : null}
     </>
   );
 }

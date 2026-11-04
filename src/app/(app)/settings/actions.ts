@@ -138,3 +138,90 @@ export async function saveVerificationOptions(input: unknown): Promise<SettingsR
     return fail(e);
   }
 }
+
+/** Settings, Sending limits: the email limits and warm-up schedule (SRS 8.4). */
+export async function saveEmailLimits(input: unknown): Promise<SettingsResult> {
+  try {
+    const actor = await requireRole("admin");
+    const { emailLimitsSchema } = await import("@/lib/email/limits");
+    const v = emailLimitsSchema.parse(input);
+    const days = v.warmup.map((w) => w.from_day);
+    if (!days.includes(1)) return { ok: false, error: "The warm-up schedule must start on day 1." };
+    if (new Set(days).size !== days.length) return { ok: false, error: "Each warm-up step needs a different start day." };
+    v.warmup.sort((a, b) => a.from_day - b.from_day);
+    await setPlainSetting("email.limits", v, actor.id, "limits");
+    await writeAudit(actor, "settings.changed", "setting", "email.limits", { daily_cap: v.daily_cap, window: `${v.window_start}-${v.window_end}` });
+    revalidatePath("/settings");
+    return { ok: true, message: "Sending limits saved. New campaigns use them; running campaigns keep their own hours and gap." };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+const senderSchema = z.object({
+  fromName: z.string().trim().min(1, "Enter the sender name.").max(80),
+  fromEmail: z.string().trim().toLowerCase().email("Enter a valid sender address."),
+  replyTo: z.union([z.literal(""), z.string().trim().toLowerCase().email("Enter a valid reply-to address.")]),
+});
+
+/** Settings, Sender identities: an address on a domain verified in Resend. */
+export async function addEmailSender(input: unknown): Promise<SettingsResult> {
+  try {
+    const actor = await requireRole("admin");
+    const v = senderSchema.parse(input);
+    const supabase = await createSupabaseServerClient();
+    const { error } = await supabase.from("email_senders").insert({ from_name: v.fromName, from_email: v.fromEmail, reply_to: v.replyTo || null, created_by: actor.id });
+    if (error) {
+      if (error.code === "23505") return { ok: false, error: "That sender address is already added." };
+      throw error;
+    }
+    await writeAudit(actor, "sender.added", "email_sender", null, { email: v.fromEmail });
+    revalidatePath("/settings");
+    return { ok: true, message: "Sender added. Make sure its domain is verified in Resend before sending." };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function setEmailSenderActive(id: string, active: boolean): Promise<SettingsResult> {
+  try {
+    const actor = await requireRole("admin");
+    const supabase = await createSupabaseServerClient();
+    const { error } = await supabase.from("email_senders").update({ is_active: active }).eq("id", z.string().uuid().parse(id));
+    if (error) throw error;
+    await writeAudit(actor, active ? "sender.enabled" : "sender.disabled", "email_sender", id);
+    revalidatePath("/settings");
+    return { ok: true, message: active ? "Sender turned on." : "Sender turned off. Campaigns using it pause until you pick another sender." };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Settings, Branding: the email footer (company name and address) shown above the unsubscribe link. */
+export async function saveBranding(input: unknown): Promise<SettingsResult> {
+  try {
+    const actor = await requireRole("admin");
+    const v = z.object({ emailFooter: z.string().trim().max(500, "Keep the footer under 500 characters.") }).parse(input);
+    await setPlainSetting("branding.email_footer", v.emailFooter, actor.id, "branding");
+    await writeAudit(actor, "settings.changed", "setting", "branding.email_footer");
+    revalidatePath("/settings");
+    return { ok: true, message: "Email footer saved." };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Settings, Defaults: the {{product_price}} line for each product. */
+export async function savePriceLines(input: unknown): Promise<SettingsResult> {
+  try {
+    const actor = await requireRole("admin");
+    const line = z.string().trim().max(120, "Keep each price line under 120 characters.");
+    const v = z.object({ classwell: line, vetlin: line, postwala: line }).parse(input);
+    await setPlainSetting("products.price_lines", v, actor.id, "defaults");
+    await writeAudit(actor, "settings.changed", "setting", "products.price_lines");
+    revalidatePath("/settings");
+    return { ok: true, message: "Price lines saved." };
+  } catch (e) {
+    return fail(e);
+  }
+}

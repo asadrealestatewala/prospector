@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { requireScreen } from "@/lib/auth/session";
 import { canAccess } from "@/lib/auth/roles";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { LeadDetail, type TimelineItem } from "./lead-detail";
 
 export const metadata: Metadata = { title: "Lead Detail" };
@@ -32,6 +33,15 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     supabase.from("do_not_contact").select("channel, value_normalized").eq("lead_id", id).is("removed_at", null),
   ]);
 
+  const canEmail = ["admin", "manager", "sales_agent"].includes(user.role);
+  const [templates, senders] = canEmail
+    ? await Promise.all([
+        supabase.from("templates").select("id, name, subject, body, language").eq("channel", "email").eq("product", lead.product).is("archived_at", null).order("name"),
+        // Sales agents cannot read email_senders under RLS; only the display fields are passed on.
+        createSupabaseAdminClient().from("email_senders").select("id, from_name, from_email").eq("is_active", true).order("created_at"),
+      ])
+    : [{ data: [] }, { data: [] }];
+
   const name = (u: unknown) => (u as { full_name: string } | null)?.full_name ?? null;
   const timeline: TimelineItem[] = [
     ...(notes.data ?? []).map((n) => ({ id: `n-${n.id}`, at: n.created_at, kind: n.kind === "call" ? ("call" as const) : ("note" as const), title: n.kind === "call" ? "Call logged" : "Note", body: n.body, by: name(n.author) })),
@@ -53,6 +63,9 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       canSeeLeads={canAccess(user.role, "leads")}
       canVerify={["admin", "lead_expert"].includes(user.role)}
       canSeeConsent={canAccess(user.role, "consent-log")}
+      canEmail={canEmail}
+      emailTemplates={templates.data ?? []}
+      senders={senders.data ?? []}
     />
   );
 }

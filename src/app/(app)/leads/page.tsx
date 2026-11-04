@@ -56,6 +56,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
       hidden={hidden}
       canDelete={["admin", "manager", "lead_expert"].includes(user.role)}
       canVerify={["admin", "lead_expert"].includes(user.role)}
+      canEmail={["admin", "manager"].includes(user.role)}
     />
   );
 }
