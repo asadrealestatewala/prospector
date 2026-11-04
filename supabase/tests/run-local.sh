@@ -19,5 +19,5 @@ for f in "$ROOT"/supabase/migrations/*.sql; do
   "${PSQL[@]}" -f "$f"
 done
 echo "run checks"
-"${PSQL[@]}" -f "$ROOT/supabase/tests/checks.sql"
+"${PSQL[@]}" -f "$ROOT/supabase/tests/checks.sql" -f "$ROOT/supabase/tests/checks_step2.sql"
 echo "all database checks passed"

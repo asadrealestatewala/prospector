@@ -57,4 +57,7 @@ Prospector is one internal lead generation and outreach system for three product
 - `src/app/(auth)` login and password screens; `src/app/(app)` the signed-in app shell.
 - `src/lib/auth` roles and server guards; `src/lib/crypto` settings encryption;
   `src/lib/supabase` clients (the service-role client is server only).
+- `src/lib/engine` search logic shared by the app and the workers (no `server-only` imports here,
+  because the workers run outside Next.js); `src/lib/leads` Leads filters and columns.
+- `src/workers` BullMQ workers, started with `npm run workers` (PM2 app `prospector-workers`).
 - `supabase/migrations` schema, RLS and seed data; `supabase/tests` SQL checks.

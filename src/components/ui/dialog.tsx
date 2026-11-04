@@ -60,6 +60,7 @@ export function ConfirmDialog({
   title,
   description,
   confirmLabel,
+  cancelLabel = "Cancel",
   destructive,
   loading,
   onConfirm,
@@ -69,6 +70,7 @@ export function ConfirmDialog({
   title: string;
   description: React.ReactNode;
   confirmLabel: string;
+  cancelLabel?: string;
   destructive?: boolean;
   loading?: boolean;
   onConfirm: () => void;
@@ -81,7 +83,7 @@ export function ConfirmDialog({
         footer={
           <>
             <DialogClose asChild>
-              <Button variant="secondary">Cancel</Button>
+              <Button variant="secondary">{cancelLabel}</Button>
             </DialogClose>
             <Button variant={destructive ? "destructive-solid" : "primary"} loading={loading} onClick={onConfirm}>
               {confirmLabel}

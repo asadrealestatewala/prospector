@@ -12,7 +12,7 @@ export const buttonVariants = cva(
       variant: {
         primary: "bg-brand-600 text-white hover:bg-brand-700 disabled:bg-neutral-soft",
         secondary: "border border-border bg-surface text-fg hover:bg-brand-50",
-        whatsapp: "bg-whatsapp text-[#08361b] hover:brightness-95",
+        whatsapp: "bg-whatsapp text-[#08361b] hover:brightness-95 disabled:bg-neutral-soft",
         destructive: "border border-border bg-surface text-error hover:bg-error-soft",
         "destructive-solid": "bg-error text-white hover:brightness-110",
         ghost: "text-fg hover:bg-neutral-soft",
