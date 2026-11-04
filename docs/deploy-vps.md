@@ -12,6 +12,9 @@ only (skip section 3, drop the `api.` DNS record, and put the hosted project's U
 - Ubuntu 24.04 LTS. At least **8 GB RAM, 4 vCPU and 100 GB disk**: self-hosted Supabase uses about
   4 GB, the app about 1 GB, and the crawler, Redis and workers the rest (SRS 9.3 "Hosting size").
 - Install Docker with the Compose plugin, Node 22 LTS, `pm2` (`npm i -g pm2`), Git, and Caddy or Nginx.
+- Install Redis for the background queues and keep it private: `sudo apt install redis-server`, then in
+  `/etc/redis/redis.conf` keep `bind 127.0.0.1 ::1`, set `appendonly yes` (jobs survive a restart, SRS 8.5)
+  and `maxmemory-policy noeviction` (BullMQ needs it), and `sudo systemctl restart redis-server`.
 - Set the server clock zone: `sudo timedatectl set-timezone Asia/Karachi`.
 - Open only ports 22, 80 and 443 in the firewall (`ufw allow OpenSSH http https`).
 
@@ -82,6 +85,8 @@ Create `/opt/prospector/.env.local` on the server:
 | `SUPABASE_SERVICE_ROLE_KEY` | `SERVICE_ROLE_KEY` from the Supabase `.env` |
 | `SETTINGS_ENCRYPTION_KEY` | `openssl rand -base64 32`; keep a backup |
 | `APP_URL` | `https://prospector.yourdomain.com` |
+| `REDIS_URL` | `redis://127.0.0.1:6379` (the default, so it can be left out) |
+| `PLACES_CONCURRENCY` | Cities searched at the same time, default `3` |
 
 Apply the database schema (every migration in `supabase/migrations`):
 
@@ -89,7 +94,9 @@ Apply the database schema (every migration in `supabase/migrations`):
 npx supabase db push --db-url "postgresql://postgres:<POSTGRES_PASSWORD>@127.0.0.1:5432/postgres"
 ```
 
-Build and start under PM2, and make PM2 start on boot:
+Build and start under PM2, and make PM2 start on boot. This starts two processes: `prospector-web`
+(the app) and `prospector-workers` (the search queue now; the crawler, email and WhatsApp senders
+join it in later steps). PM2 restarts either one after a crash or reboot.
 
 ```bash
 npm run build

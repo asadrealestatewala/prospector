@@ -13,6 +13,8 @@ export type Column<T> = {
   value?: (row: T) => string | number | null;
   numeric?: boolean;
   className?: string;
+  /** Set false when the server cannot sort by this column. */
+  sortable?: boolean;
 };
 
 function toCsv<T>(rows: T[], columns: Column<T>[]): string {
@@ -41,6 +43,8 @@ export function DataTable<T>({
   empty,
   bulkActions,
   initialPageSize = 25,
+  manual,
+  hiddenColumns,
 }: {
   rows: T[];
   columns: Column<T>[];
@@ -53,14 +57,30 @@ export function DataTable<T>({
   empty?: React.ReactNode;
   bulkActions?: (selected: T[]) => React.ReactNode;
   initialPageSize?: number;
+  /**
+   * Server-side paging and sorting for large tables (Leads): rows are already the current page,
+   * sorted by the server; the table reports page, size and sort changes instead.
+   */
+  manual?: {
+    total: number;
+    page: number;
+    pageSize: number;
+    sort: { key: string; dir: "asc" | "desc" } | null;
+    onPage: (page: number) => void;
+    onPageSize: (size: number) => void;
+    onSort: (sort: { key: string; dir: "asc" | "desc" }) => void;
+  };
+  hiddenColumns?: string[];
 }) {
   const [sort, setSort] = React.useState<{ key: string; dir: "asc" | "desc" } | null>(null);
   const [page, setPage] = React.useState(0);
   const [pageSize, setPageSize] = React.useState(initialPageSize);
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
 
+  const shown = hiddenColumns?.length ? columns.filter((c) => !hiddenColumns.includes(c.key)) : columns;
+  const activeSort = manual ? manual.sort : sort;
   const sorted = React.useMemo(() => {
-    if (!sort) return rows;
+    if (manual || !sort) return rows;
     const col = columns.find((c) => c.key === sort.key);
     if (!col?.value) return rows;
     const copy = [...rows];
@@ -74,11 +94,19 @@ export function DataTable<T>({
       return sort.dir === "asc" ? r : -r;
     });
     return copy;
-  }, [rows, columns, sort]);
+  }, [rows, columns, sort, manual]);
 
-  const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize));
-  const current = Math.min(page, pageCount - 1);
-  const visible = sorted.slice(current * pageSize, current * pageSize + pageSize);
+  const size = manual ? manual.pageSize : pageSize;
+  const total = manual ? manual.total : sorted.length;
+  const pageCount = Math.max(1, Math.ceil(total / size));
+  const current = Math.min(manual ? manual.page : page, pageCount - 1);
+  const visible = manual ? rows : sorted.slice(current * size, current * size + size);
+  const goPage = (p: number) => (manual ? manual.onPage(p) : setPage(p));
+  const toggleSort = (key: string) => {
+    const next = activeSort?.key === key && activeSort.dir === "asc" ? { key, dir: "desc" as const } : { key, dir: "asc" as const };
+    if (manual) manual.onSort(next);
+    else setSort(next);
+  };
   const selectedRows = rows.filter((r) => selected.has(rowKey(r)));
   const allVisibleSelected = visible.length > 0 && visible.every((r) => selected.has(rowKey(r)));
 
@@ -90,7 +118,7 @@ export function DataTable<T>({
 
   function exportCsv() {
     const data = selectedRows.length ? selectedRows : sorted;
-    const blob = new Blob([toCsv(data, columns)], { type: "text/csv;charset=utf-8" });
+    const blob = new Blob([toCsv(data, shown)], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = `${exportName ?? "export"}.csv`;
@@ -127,23 +155,23 @@ export function DataTable<T>({
                   <input type="checkbox" aria-label="Select all rows on this page" checked={allVisibleSelected} onChange={toggleAll} className="size-4 accent-[var(--brand-600)]" />
                 </th>
               ) : null}
-              {columns.map((c) => {
-                const active = sort?.key === c.key;
+              {shown.map((c) => {
+                const active = activeSort?.key === c.key;
                 return (
                   <th
                     key={c.key}
                     scope="col"
-                    aria-sort={active ? (sort!.dir === "asc" ? "ascending" : "descending") : undefined}
+                    aria-sort={active ? (activeSort!.dir === "asc" ? "ascending" : "descending") : undefined}
                     className={cn("h-11 whitespace-nowrap border-b border-border px-3 text-left text-helper font-semibold text-fg-muted", c.numeric && "text-right", c.className)}
                   >
-                    {c.value ? (
+                    {c.value && c.sortable !== false ? (
                       <button
                         type="button"
                         className="inline-flex items-center gap-1 hover:text-fg"
-                        onClick={() => setSort(active && sort!.dir === "asc" ? { key: c.key, dir: "desc" } : { key: c.key, dir: "asc" })}
+                        onClick={() => toggleSort(c.key)}
                       >
                         {c.header}
-                        {active ? sort!.dir === "asc" ? <ArrowUp className="size-4" /> : <ArrowDown className="size-4" /> : <ArrowUpDown className="size-4 opacity-40" />}
+                        {active ? activeSort!.dir === "asc" ? <ArrowUp className="size-4" /> : <ArrowDown className="size-4" /> : <ArrowUpDown className="size-4 opacity-40" />}
                       </button>
                     ) : (
                       c.header
@@ -156,7 +184,7 @@ export function DataTable<T>({
           <tbody>
             {visible.length === 0 ? (
               <tr>
-                <td colSpan={columns.length + (selectable ? 1 : 0)}>{empty}</td>
+                <td colSpan={shown.length + (selectable ? 1 : 0)}>{empty}</td>
               </tr>
             ) : (
               visible.map((r) => {
@@ -184,7 +212,7 @@ export function DataTable<T>({
                         />
                       </td>
                     ) : null}
-                    {columns.map((c) => (
+                    {shown.map((c) => (
                       <td key={c.key} className={cn("px-3", c.numeric && "tabular text-right", c.className)}>
                         {c.cell(r)}
                       </td>
@@ -199,7 +227,7 @@ export function DataTable<T>({
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-2 text-helper text-fg-muted">
         <label className="flex items-center gap-2">
           Rows per page
-          <Select className="h-8 w-20" value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(0); }}>
+          <Select className="h-8 w-20" value={size} onChange={(e) => { if (manual) manual.onPageSize(Number(e.target.value)); else { setPageSize(Number(e.target.value)); setPage(0); } }}>
             {[25, 50, 100].map((n) => (
               <option key={n} value={n}>{n}</option>
             ))}
@@ -207,12 +235,12 @@ export function DataTable<T>({
         </label>
         <div className="flex items-center gap-2">
           <span className="tabular">
-            {sorted.length === 0 ? 0 : current * pageSize + 1}–{Math.min(sorted.length, (current + 1) * pageSize)} of {sorted.length}
+            {total === 0 ? 0 : current * size + 1}–{Math.min(total, (current + 1) * size)} of {total.toLocaleString("en-PK")}
           </span>
-          <Button variant="ghost" size="icon" aria-label="Previous page" disabled={current === 0} onClick={() => setPage(current - 1)}>
+          <Button variant="ghost" size="icon" aria-label="Previous page" disabled={current === 0} onClick={() => goPage(current - 1)}>
             <ChevronLeft />
           </Button>
-          <Button variant="ghost" size="icon" aria-label="Next page" disabled={current >= pageCount - 1} onClick={() => setPage(current + 1)}>
+          <Button variant="ghost" size="icon" aria-label="Next page" disabled={current >= pageCount - 1} onClick={() => goPage(current + 1)}>
             <ChevronRight />
           </Button>
         </div>

@@ -5,6 +5,8 @@ import { Check, Copy, KeyRound, PlugZap, SlidersHorizontal } from "lucide-react"
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList } from "@/components/ui/tabs";
+import type { CityGroup } from "@/lib/engine/cities";
+import { DefaultsTab, type ScoringRules } from "./defaults-tab";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
 import { StatusChip } from "@/components/ui/chips";
@@ -219,7 +221,7 @@ function IntegrationCard({ integration, rows, disabled, extra }: { integration: 
   );
 }
 
-export function SettingsScreen({ settings, webhookUrl, resendWebhookUrl, encryptionReady }: { settings: SettingRow[]; webhookUrl: string; resendWebhookUrl: string; encryptionReady: boolean }) {
+export function SettingsScreen({ settings, webhookUrl, resendWebhookUrl, encryptionReady, scoring, cityGroups }: { settings: SettingRow[]; webhookUrl: string; resendWebhookUrl: string; encryptionReady: boolean; scoring: ScoringRules; cityGroups: CityGroup[] }) {
   const rows = new Map(settings.map((s) => [s.key, s]));
   return (
     <>
@@ -234,6 +236,10 @@ export function SettingsScreen({ settings, webhookUrl, resendWebhookUrl, encrypt
             { value: "branding", label: "Branding" },
           ]}
         />
+        <TabsContent value="defaults" className="flex flex-col gap-6">
+          <DefaultsTab scoring={scoring} groups={cityGroups} />
+          <p className="text-helper text-fg-muted">Product price lines and follow-up gaps are added here in step 8, with the pipeline and follow-ups.</p>
+        </TabsContent>
         <TabsContent value="integrations" className="flex flex-col gap-6">
           {!encryptionReady ? (
             <p className="rounded-control bg-warning-soft px-3 py-2 text-body text-warning" role="alert">
@@ -265,7 +271,6 @@ export function SettingsScreen({ settings, webhookUrl, resendWebhookUrl, encrypt
         {[
           { v: "limits", step: "5 and 6", msg: "Daily limits, sending hours and the warm-up schedule are set here when the email and WhatsApp senders are built in steps 5 and 6." },
           { v: "senders", step: "5 and 6", msg: "Sending domains, addresses and the connected WhatsApp number are added here in steps 5 and 6." },
-          { v: "defaults", step: "2", msg: "Product price lines, city groups, lead scoring points and follow-up gaps are added here in step 2." },
           { v: "branding", step: "5", msg: "Logo, colours and the email footer are set here in step 5, alongside email templates." },
         ].map((t) => (
           <TabsContent key={t.v} value={t.v}>
