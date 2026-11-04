@@ -6,7 +6,7 @@ import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { toast } from "@/components/ui/toaster";
 import { PROVINCE_GROUPS, type CityGroup } from "@/lib/engine/cities";
-import { saveCityGroups, saveScoring } from "./actions";
+import { saveCityGroups, saveScoring, saveVerificationOptions } from "./actions";
 
 export type ScoringRules = {
   website: number;
@@ -31,8 +31,9 @@ const SCORING_FIELDS: { key: keyof ScoringRules; label: string; hint?: string }[
 ];
 
 /** Settings, Defaults tab: lead scoring points and city groups (step 2). */
-export function DefaultsTab({ scoring, groups }: { scoring: ScoringRules; groups: CityGroup[] }) {
+export function DefaultsTab({ scoring, groups, autoVerify }: { scoring: ScoringRules; groups: CityGroup[]; autoVerify: boolean }) {
   const [rules, setRules] = React.useState(scoring);
+  const [verifyNew, setVerifyNew] = React.useState(autoVerify);
   const [list, setList] = React.useState(groups.map((g) => ({ name: g.name, cities: g.cities.join(", ") })));
   const [busy, setBusy] = React.useState<string | null>(null);
 
@@ -46,6 +47,21 @@ export function DefaultsTab({ scoring, groups }: { scoring: ScoringRules; groups
 
   return (
     <div className="grid gap-6 xl:grid-cols-2">
+      <Card className="xl:col-span-2">
+        <CardHeader title="Email verification" description="New emails found by the crawler or added by hand can be checked automatically. Each paid check counts against the verification budget." />
+        <CardBody className="flex flex-wrap items-center justify-between gap-4">
+          <label className="flex items-start gap-2 text-body" htmlFor="auto-verify">
+            <input id="auto-verify" type="checkbox" checked={verifyNew} onChange={(e) => setVerifyNew(e.target.checked)} className="mt-0.5 size-4 accent-[var(--brand-600)]" />
+            <span>
+              Verify new emails automatically
+              <span className="block text-helper text-fg-muted">When off, emails are checked only when someone presses Verify on Leads or Lead Detail.</span>
+            </span>
+          </label>
+          <Button variant="primary" loading={busy === "verify"} disabled={verifyNew === autoVerify || !!busy} onClick={() => run("verify", () => saveVerificationOptions({ auto_verify_new: verifyNew }))}>
+            Save
+          </Button>
+        </CardBody>
+      </Card>
       <Card>
         <CardHeader title="Lead scoring" description="Points added to a lead's score. Saving recalculates every lead." />
         <CardBody className="flex flex-col gap-4">

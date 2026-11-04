@@ -22,12 +22,38 @@ function pkDate(d = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Karachi" }).format(d);
 }
 
-export async function checkGoogleSpend(db: SupabaseClient, product: Product, calls: number): Promise<GoogleSpendCheck> {
+export const VERIFY_PROVIDER = "email_verification";
+export const VERIFY_ITEM = "check";
+
+export type SpendCheck = GoogleSpendCheck;
+
+type Paid = {
+  provider: string;
+  item: string;
+  /** Used in messages, for example "Google Places price per call". */
+  priceLabel: string;
+  /** What is blocked while the price is missing, for example "searches can run". */
+  blocked: string;
+};
+
+const GOOGLE: Paid = { provider: GOOGLE_PROVIDER, item: GOOGLE_ITEM, priceLabel: "Google Places price per call", blocked: "searches can run" };
+const VERIFY: Paid = { provider: VERIFY_PROVIDER, item: VERIFY_ITEM, priceLabel: "email verification price per check", blocked: "emails can be verified" };
+
+export function checkGoogleSpend(db: SupabaseClient, product: Product, calls: number): Promise<GoogleSpendCheck> {
+  return checkApiSpend(db, GOOGLE, product, calls);
+}
+
+/** The same check for paid email verification (SRS 8.4: prices and budgets read at the moment of use). */
+export function checkVerifySpend(db: SupabaseClient, product: Product | null, checks: number): Promise<SpendCheck> {
+  return checkApiSpend(db, VERIFY, product, checks);
+}
+
+async function checkApiSpend(db: SupabaseClient, paid: Paid, product: Product | null, calls: number): Promise<SpendCheck> {
   const today = pkDate();
   const monthStart = `${today.slice(0, 7)}-01`;
 
   const [{ data: rateRow }, { data: fxRow }] = await Promise.all([
-    db.rpc("rate_on", { p_provider: GOOGLE_PROVIDER, p_item: GOOGLE_ITEM, p_country: "PK", p_on: today }),
+    db.rpc("rate_on", { p_provider: paid.provider, p_item: paid.item, p_country: "PK", p_on: today }),
     db.rpc("rate_on", { p_provider: "fx", p_item: "usd_to_pkr", p_country: "PK", p_on: today }),
   ]);
   const rate = (Array.isArray(rateRow) ? rateRow[0] : rateRow) as
@@ -38,7 +64,7 @@ export async function checkGoogleSpend(db: SupabaseClient, product: Product, cal
 
   const base = { calls, costPkr: null, rateId: rate?.id ?? null, usedThisPeriod: 0, warning: null, remainingPkr: null };
   if (!rate?.id || rate.rate === null) {
-    return { ...base, ok: false, message: "The Google Places price per call is not set. An Admin must enter it on the Costs screen before searches can run." };
+    return { ...base, ok: false, message: `The ${paid.priceLabel} is not set. An Admin must enter it on the Costs screen before ${paid.blocked}.` };
   }
   if (rate.currency === "USD" && usdToPkr === null) {
     return { ...base, ok: false, message: "The USD to PKR exchange rate is not set. An Admin must enter it on the Costs screen." };
@@ -48,18 +74,18 @@ export async function checkGoogleSpend(db: SupabaseClient, product: Product, cal
   const { data: usage } = await db
     .from("api_usage")
     .select("calls")
-    .eq("provider", GOOGLE_PROVIDER)
-    .eq("item", GOOGLE_ITEM)
+    .eq("provider", paid.provider)
+    .eq("item", paid.item)
     .gte("day", periodStart);
   const usedThisPeriod = (usage ?? []).reduce((s, r) => s + Number(r.calls), 0);
 
   const googleRate: GoogleRate = { rate: Number(rate.rate), currency: rate.currency, freeAllowance: rate.free_allowance === null ? null : Number(rate.free_allowance) };
   const costPkr = googleCallCostPkr(calls, usedThisPeriod, googleRate, usdToPkr);
   if (costPkr === null) {
-    return { ...base, usedThisPeriod, ok: false, message: "A Google price or the exchange rate is missing on the Costs screen." };
+    return { ...base, usedThisPeriod, ok: false, message: `The ${paid.priceLabel} or the exchange rate is missing on the Costs screen.` };
   }
 
-  const limits = await applicableLimits(db, product, monthStart, usdToPkr);
+  const limits = await applicableLimits(db, paid.provider, product, monthStart, usdToPkr);
   if ("error" in limits) return { ...base, usedThisPeriod, costPkr, ok: false, message: limits.error };
   const verdict = checkBudgets(costPkr, limits);
   return { ...verdict, calls, costPkr, rateId: rate.id, usedThisPeriod };
@@ -77,15 +103,15 @@ type BudgetRow = {
   stop_pct: number;
 };
 
-/** Budgets that cover Google spend for this product this month, with their spend so far. */
-async function applicableLimits(db: SupabaseClient, product: Product, monthStart: string, usdToPkr: number | null): Promise<BudgetLimit[] | { error: string }> {
+/** Budgets that cover this provider's spend for this product this month, with their spend so far. */
+async function applicableLimits(db: SupabaseClient, provider: string, product: Product | null, monthStart: string, usdToPkr: number | null): Promise<BudgetLimit[] | { error: string }> {
   const { data: budgets, error } = await db
     .from("budgets")
     .select("name, provider, product, channel, month, amount, currency, warn_pct, stop_pct")
     .eq("is_active", true)
     .is("channel", null)
-    .or(`provider.is.null,provider.eq.${GOOGLE_PROVIDER}`)
-    .or(`product.is.null,product.eq.${product}`)
+    .or(`provider.is.null,provider.eq.${provider}`)
+    .or(product ? `product.is.null,product.eq.${product}` : "product.is.null")
     .or(`month.is.null,month.eq.${monthStart}`);
   if (error) return { error: "Could not read budgets." };
   const rows = (budgets ?? []) as BudgetRow[];

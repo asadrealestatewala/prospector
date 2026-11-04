@@ -21,7 +21,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   if (!lead) notFound();
 
   const [contacts, social, crawls, notes, events, changes, messages, owners, dnc] = await Promise.all([
-    supabase.from("lead_contacts").select("id, kind, value, value_normalized, label, source, source_url, verification, consent_state, is_primary, created_at").eq("lead_id", id).order("kind").order("is_primary", { ascending: false }).order("created_at"),
+    supabase.from("lead_contacts").select("id, kind, value, value_normalized, label, source, source_url, verification, verification_detail, verify_requested_at, consent_state, is_primary, created_at").eq("lead_id", id).order("kind").order("is_primary", { ascending: false }).order("created_at"),
     supabase.from("lead_social_links").select("id, platform, url").eq("lead_id", id).order("platform"),
     supabase.from("crawl_jobs").select("id, url, status, pages_visited, pages, error_reason, finished_at").eq("lead_id", id).order("created_at", { ascending: false }).limit(5),
     supabase.from("lead_notes").select("id, kind, body, created_at, author:users!lead_notes_author_id_fkey(full_name)").eq("lead_id", id).order("created_at", { ascending: false }).limit(200),
@@ -51,6 +51,8 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       timeline={timeline}
       owners={owners.data ?? []}
       canSeeLeads={canAccess(user.role, "leads")}
+      canVerify={["admin", "lead_expert"].includes(user.role)}
+      canSeeConsent={canAccess(user.role, "consent-log")}
     />
   );
 }

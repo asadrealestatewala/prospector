@@ -17,6 +17,7 @@ export default async function SettingsPage() {
   const encryptionReady = Boolean(process.env.SETTINGS_ENCRYPTION_KEY);
   const value = (k: string) => (data ?? []).find((r) => r.key === k)?.value;
   const scoring = { website: 10, email: 5, verified_email: 20, whatsapp: 20, reviews: 10, reviews_min: 20, recent_reply: 30, recent_reply_days: 14, ...((value("scoring.rules") as object) ?? {}) };
+  const autoVerify = Boolean((value("verification.options") as { auto_verify_new?: boolean } | null)?.auto_verify_new);
   const cityGroups = Array.isArray(value("search.city_groups")) ? (value("search.city_groups") as CityGroup[]) : [];
-  return <SettingsScreen scoring={scoring} cityGroups={cityGroups} settings={(data ?? []) as SettingRow[]} webhookUrl={`${appUrl}/api/webhooks/botlinkd`} resendWebhookUrl={`${appUrl}/api/webhooks/resend`} encryptionReady={encryptionReady} />;
+  return <SettingsScreen autoVerify={autoVerify} scoring={scoring} cityGroups={cityGroups} settings={(data ?? []) as SettingRow[]} webhookUrl={`${appUrl}/api/webhooks/botlinkd`} resendWebhookUrl={`${appUrl}/api/webhooks/resend`} encryptionReady={encryptionReady} />;
 }

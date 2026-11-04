@@ -88,6 +88,7 @@ Create `/opt/prospector/.env.local` on the server:
 | `REDIS_URL` | `redis://127.0.0.1:6379` (the default, so it can be left out) |
 | `PLACES_CONCURRENCY` | Cities searched at the same time, default `3` |
 | `CRAWL_CONCURRENCY` | Websites crawled at the same time, default `5`. Lower it on a small server |
+| `VERIFY_CONCURRENCY` | Email addresses checked at the same time, default `3` |
 
 Apply the database schema (every migration in `supabase/migrations`):
 

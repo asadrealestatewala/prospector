@@ -50,6 +50,8 @@ export async function savePlain(name: string, value: string): Promise<SettingsRe
     const actor = await requireRole("admin");
     const key = z.enum(PLAIN_KEYS as [string, ...string[]]).parse(name);
     const v = z.string().trim().max(200).parse(value);
+    const options = INTEGRATIONS.flatMap((i) => i.plain ?? []).find((p) => p.key === key)?.options;
+    if (options && v && !options.some((o) => o.value === v)) throw new z.ZodError([{ code: "custom", path: [], message: "Choose one of the listed options.", input: v }]);
     await setPlainSetting(key, v || null, actor.id);
     await writeAudit(actor, "settings.changed", "setting", key);
     revalidatePath("/settings");
@@ -118,6 +120,20 @@ export async function saveCityGroups(input: unknown): Promise<SettingsResult> {
     revalidatePath("/settings");
     revalidatePath("/searches/new");
     return { ok: true, message: "City groups saved." };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Settings, Defaults: whether new emails are verified automatically (email-verify queue). */
+export async function saveVerificationOptions(input: unknown): Promise<SettingsResult> {
+  try {
+    const actor = await requireRole("admin");
+    const v = z.object({ auto_verify_new: z.boolean() }).parse(input);
+    await setPlainSetting("verification.options", v, actor.id, "defaults");
+    await writeAudit(actor, "settings.changed", "setting", "verification.options", v);
+    revalidatePath("/settings");
+    return { ok: true, message: v.auto_verify_new ? "New emails will be verified automatically." : "Automatic verification is off." };
   } catch (e) {
     return fail(e);
   }

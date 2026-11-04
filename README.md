@@ -62,8 +62,9 @@ Supabase environment variables do.
 | `PLACES_CONCURRENCY` | How many cities the search worker runs at once. Default `3` |
 | `CRAWL_CONCURRENCY` | How many websites the crawler visits at once. Default `5` |
 | `CRAWLER_USER_AGENT` | Optional. The name the crawler sends to websites; robots files are matched on `ProspectorBot` |
+| `VERIFY_CONCURRENCY` | How many email addresses are checked at once. Default `3` |
 
-Google, Resend and BotLinkd keys are **not** environment variables. An Admin enters them on the
+Google, Resend, BotLinkd and email verification keys are **not** environment variables. An Admin enters them on the
 Settings screen, where they are encrypted with AES-256-GCM and only the last four characters are shown.
 
 ## Checks
@@ -116,3 +117,18 @@ queued crawls to the `website-crawl` queue every 15 seconds and visit `CRAWL_CON
   the crawler reach services inside the server.
 
 The crawler costs nothing per call, so it has no budget check.
+
+## Compliance (step 4)
+
+- **Do-Not-Contact** (sidebar). Admins add entries one at a time or import a CSV (a `value` column, or the
+  first column, plus optional `reason`). Every matching email or phone on every lead is marked opted out at
+  once and gets a consent log entry. Removing an entry needs a reason and is recorded; entries cannot be
+  edited. Export downloads the filtered list as CSV.
+- **Consent Log** (sidebar, Admin only). Every collected, opted-in, opted-out and unsubscribed event, with
+  filters and CSV export. A lead's Consent card links to an export of just that lead.
+- **Email verification.** "Verify emails" on Leads (bulk) and on Lead Detail. Free checks run first
+  (format, throwaway domains, a mail server for the domain); only addresses that pass go to the paid
+  service chosen in Settings, Integrations (MillionVerifier, ZeroBounce or NeverBounce). Results are
+  valid, risky (catch-all or unknown) or invalid, with a one-line reason. "Verify new emails automatically"
+  is in Settings, Defaults. Paid checks need a price on Costs (provider `email_verification`, item
+  `check`) and a budget; without them only the free checks run.

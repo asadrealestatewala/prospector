@@ -7,11 +7,17 @@
 import { createClient } from "@supabase/supabase-js";
 import { Queue, Worker } from "bullmq";
 import { decryptSecret, parseEncryptionKey } from "@/lib/crypto/secrets";
-import { CRAWL_QUEUE, enqueueCrawls, MAINTENANCE_QUEUE, PLACES_QUEUE, redisConnection, type CrawlJob, type PlacesJob } from "@/lib/engine/queue";
+import { resolveMx } from "node:dns/promises";
+import { isProviderId } from "@/lib/engine/email-verify";
+import {
+  CRAWL_QUEUE, enqueueCrawls, enqueueVerifications, MAINTENANCE_QUEUE, PLACES_QUEUE, redisConnection, VERIFY_QUEUE,
+  type CrawlJob, type PlacesJob, type VerifyJob,
+} from "@/lib/engine/queue";
 import { queueSearch } from "@/lib/engine/start-search";
 import { crawlSite, loadRobots } from "@/workers/crawl-site";
 import { processPlacesJob, startDueSearches } from "@/workers/places-search";
 import { dispatchCrawls, processCrawlJob } from "@/workers/website-crawl";
+import { dispatchVerifications, processVerifyJob } from "@/workers/email-verify";
 
 function required(name: string): string {
   const v = process.env[name];
@@ -27,6 +33,25 @@ const encKey = parseEncryptionKey(required("SETTINGS_ENCRYPTION_KEY"));
 async function googleKey(): Promise<string | null> {
   const { data } = await db.from("settings").select("secret_ciphertext").eq("key", "google.places_api_key").maybeSingle();
   return data?.secret_ciphertext ? decryptSecret(data.secret_ciphertext, encKey, "google.places_api_key") : null;
+}
+
+async function verifyProvider() {
+  const { data } = await db.from("settings").select("key, value, secret_ciphertext").in("key", ["email_verification.provider", "email_verification.api_key"]);
+  const id = data?.find((r) => r.key === "email_verification.provider")?.value;
+  const cipher = data?.find((r) => r.key === "email_verification.api_key")?.secret_ciphertext;
+  if (!isProviderId(id) || !cipher) return null;
+  return { id, apiKey: decryptSecret(cipher, encKey, "email_verification.api_key") };
+}
+
+/** Mail servers for a domain; a domain with none gives an empty list, a DNS outage throws. */
+async function mailServers(domain: string): Promise<string[]> {
+  try {
+    return (await resolveMx(domain)).map((m) => m.exchange).filter(Boolean);
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code;
+    if (code === "ENODATA" || code === "ENOTFOUND") return [];
+    throw e;
+  }
 }
 
 function log(msg: string, extra: Record<string, unknown> = {}) {
@@ -55,6 +80,13 @@ const crawls = new Worker<CrawlJob>(
 crawls.on("completed", (job, result) => log("crawl job done", { jobId: job.id, result }));
 crawls.on("failed", (job, err) => log("crawl job failed", { jobId: job?.id, attempts: job?.attemptsMade, error: err.message }));
 
+const verifier = new Worker<VerifyJob>(
+  VERIFY_QUEUE,
+  (job) => processVerifyJob(job, { db, getProvider: verifyProvider, resolveMx: mailServers, log }),
+  { connection, concurrency: Number(process.env.VERIFY_CONCURRENCY || 3) },
+);
+verifier.on("failed", (job, err) => log("verify job failed", { jobId: job?.id, attempts: job?.attemptsMade, error: err.message }));
+
 const maintenance = new Queue(MAINTENANCE_QUEUE, { connection });
 void maintenance
   .upsertJobScheduler("start-scheduled-searches", { every: 60_000 }, { name: "start-scheduled-searches" })
@@ -74,9 +106,11 @@ const maintenanceWorker = new Worker(
       return `${n} started`;
     }
     if (job.name === "dispatch-crawls") {
+      // The same 15-second tick also hands over requested email checks.
       const n = await dispatchCrawls(db, enqueueCrawls);
-      if (n) log("crawls queued", { count: n });
-      return `${n} queued`;
+      const v = await dispatchVerifications(db, enqueueVerifications);
+      if (n || v) log("jobs queued", { crawls: n, verifications: v });
+      return `${n} crawls, ${v} checks queued`;
     }
     return "unknown job";
   },
@@ -89,7 +123,7 @@ log("workers started", { concurrency, crawlConcurrency });
 
 async function shutdown() {
   log("workers stopping");
-  await Promise.allSettled([places.close(), crawls.close(), maintenanceWorker.close(), maintenance.close()]);
+  await Promise.allSettled([places.close(), crawls.close(), verifier.close(), maintenanceWorker.close(), maintenance.close()]);
   process.exit(0);
 }
 process.on("SIGINT", shutdown);

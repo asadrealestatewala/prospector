@@ -6,6 +6,9 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { writeAudit } from "@/lib/audit";
 import { LEAD_STATUSES } from "@/lib/engine/labels";
 import { leadFilterSchema } from "@/lib/leads/filters";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { checkVerifySpend } from "@/lib/engine/budget";
+import { isProviderId } from "@/lib/engine/email-verify";
 
 export type LeadResult = { ok: true; message: string } | { ok: false; error: string };
 
@@ -223,6 +226,45 @@ export async function mergeLeads(keepId: string, mergeIds: string[]): Promise<Le
     revalidatePath("/leads/duplicates");
     revalidatePath(`/leads/${keep}`);
     return { ok: true, message: `${plural(Number(data), "lead")} merged.` };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/**
+ * Queues the leads' unverified emails for checking (email-verify queue). With a paid service connected,
+ * the verification price and budget are checked first (SRS 8.4); the worker checks again before each call.
+ */
+export async function verifyLeadEmails(leadIds: string[], recheck = false): Promise<LeadResult> {
+  try {
+    const actor = await requireRole("admin", "lead_expert");
+    const v = z.array(z.string().uuid()).min(1, "Select at least one lead.").max(5000, "Select at most 5,000 leads at a time.").parse(leadIds);
+    const supabase = await createSupabaseServerClient();
+    const { data: count, error: cErr } = await supabase.rpc("count_emails_to_verify", { p_lead_ids: v, p_recheck: recheck });
+    if (cErr) throw cErr;
+    const n = Number(count ?? 0);
+    if (n === 0) return { ok: false, error: recheck ? "These leads have no email to check." : "These leads have no unverified email. Every email has been checked already or is being checked." };
+
+    const admin = createSupabaseAdminClient();
+    const { data: providerRow } = await admin.from("settings").select("value").eq("key", "email_verification.provider").maybeSingle();
+    const { data: keyRow } = await admin.from("settings").select("secret_last4").eq("key", "email_verification.api_key").maybeSingle();
+    const paid = isProviderId(providerRow?.value) && !!keyRow?.secret_last4;
+    let warning: string | null = null;
+    if (paid) {
+      const spend = await checkVerifySpend(admin, null, n);
+      if (!spend.ok) return { ok: false, error: spend.message ?? "The verification budget does not allow this many checks." };
+      warning = spend.warning;
+    }
+    const { data: queued, error } = await supabase.rpc("request_email_verification", { p_lead_ids: v, p_recheck: recheck });
+    if (error) throw error;
+    await writeAudit(actor, "email.verification_requested", "lead", v.length === 1 ? v[0] : null, { leads: v.length, emails: queued, paid });
+    revalidatePath("/leads");
+    for (const id of v.slice(0, 50)) revalidatePath(`/leads/${id}`);
+    const base = `${plural(Number(queued), "email")} queued for checking.`;
+    return {
+      ok: true,
+      message: [base, paid ? null : "No verification service is connected yet, so only the free checks will run.", warning].filter(Boolean).join(" "),
+    };
   } catch (e) {
     return fail(e);
   }
