@@ -7,9 +7,11 @@
 import { createClient } from "@supabase/supabase-js";
 import { Queue, Worker } from "bullmq";
 import { decryptSecret, parseEncryptionKey } from "@/lib/crypto/secrets";
-import { MAINTENANCE_QUEUE, PLACES_QUEUE, redisConnection, type PlacesJob } from "@/lib/engine/queue";
+import { CRAWL_QUEUE, enqueueCrawls, MAINTENANCE_QUEUE, PLACES_QUEUE, redisConnection, type CrawlJob, type PlacesJob } from "@/lib/engine/queue";
 import { queueSearch } from "@/lib/engine/start-search";
+import { crawlSite, loadRobots } from "@/workers/crawl-site";
 import { processPlacesJob, startDueSearches } from "@/workers/places-search";
+import { dispatchCrawls, processCrawlJob } from "@/workers/website-crawl";
 
 function required(name: string): string {
   const v = process.env[name];
@@ -34,6 +36,7 @@ function log(msg: string, extra: Record<string, unknown> = {}) {
 
 const connection = redisConnection();
 const concurrency = Number(process.env.PLACES_CONCURRENCY || 3);
+const crawlConcurrency = Number(process.env.CRAWL_CONCURRENCY || 5);
 
 const places = new Worker<PlacesJob>(
   PLACES_QUEUE,
@@ -43,9 +46,22 @@ const places = new Worker<PlacesJob>(
 places.on("completed", (job, result) => log("places job done", { jobId: job.id, result }));
 places.on("failed", (job, err) => log("places job failed", { jobId: job?.id, attempts: job?.attemptsMade, error: err.message }));
 
+// Websites are crawled in parallel (SRS 9.2), CRAWL_CONCURRENCY at a time.
+const crawls = new Worker<CrawlJob>(
+  CRAWL_QUEUE,
+  (job) => processCrawlJob(job, { db, crawl: crawlSite, robots: (url) => loadRobots(url), log }),
+  { connection, concurrency: crawlConcurrency, lockDuration: 120_000 },
+);
+crawls.on("completed", (job, result) => log("crawl job done", { jobId: job.id, result }));
+crawls.on("failed", (job, err) => log("crawl job failed", { jobId: job?.id, attempts: job?.attemptsMade, error: err.message }));
+
 const maintenance = new Queue(MAINTENANCE_QUEUE, { connection });
 void maintenance
   .upsertJobScheduler("start-scheduled-searches", { every: 60_000 }, { name: "start-scheduled-searches" })
+  .catch((e: Error) => log("scheduler setup failed", { error: e.message }));
+// New leads add crawl rows in the database; this hands them to the crawl queue every 15 seconds.
+void maintenance
+  .upsertJobScheduler("dispatch-crawls", { every: 15_000 }, { name: "dispatch-crawls" })
   .catch((e: Error) => log("scheduler setup failed", { error: e.message }));
 const maintenanceWorker = new Worker(
   MAINTENANCE_QUEUE,
@@ -57,16 +73,23 @@ const maintenanceWorker = new Worker(
       });
       return `${n} started`;
     }
+    if (job.name === "dispatch-crawls") {
+      const n = await dispatchCrawls(db, enqueueCrawls);
+      if (n) log("crawls queued", { count: n });
+      return `${n} queued`;
+    }
     return "unknown job";
   },
   { connection, concurrency: 1 },
 );
 
-log("workers started", { concurrency });
+maintenanceWorker.on("failed", (job, err) => log("maintenance job failed", { job: job?.name, error: err.message }));
+
+log("workers started", { concurrency, crawlConcurrency });
 
 async function shutdown() {
   log("workers stopping");
-  await Promise.allSettled([places.close(), maintenanceWorker.close(), maintenance.close()]);
+  await Promise.allSettled([places.close(), crawls.close(), maintenanceWorker.close(), maintenance.close()]);
   process.exit(0);
 }
 process.on("SIGINT", shutdown);

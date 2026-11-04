@@ -87,6 +87,7 @@ Create `/opt/prospector/.env.local` on the server:
 | `APP_URL` | `https://prospector.yourdomain.com` |
 | `REDIS_URL` | `redis://127.0.0.1:6379` (the default, so it can be left out) |
 | `PLACES_CONCURRENCY` | Cities searched at the same time, default `3` |
+| `CRAWL_CONCURRENCY` | Websites crawled at the same time, default `5`. Lower it on a small server |
 
 Apply the database schema (every migration in `supabase/migrations`):
 
@@ -95,7 +96,7 @@ npx supabase db push --db-url "postgresql://postgres:<POSTGRES_PASSWORD>@127.0.0
 ```
 
 Build and start under PM2, and make PM2 start on boot. This starts two processes: `prospector-web`
-(the app) and `prospector-workers` (the search queue now; the crawler, email and WhatsApp senders
+(the app) and `prospector-workers` (the search and crawl queues now; the email and WhatsApp senders
 join it in later steps). PM2 restarts either one after a crash or reboot.
 
 ```bash

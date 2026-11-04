@@ -9,7 +9,7 @@ import { LogoMark } from "@/components/brand/logo";
 import { signOut } from "@/app/(auth)/login/actions";
 import type { ShellUser } from "./app-shell";
 
-export const CURRENT_STEP = 2;
+export const CURRENT_STEP = 3;
 
 function isActive(pathname: string, item: NavItem) {
   if (item.href === "/searches") return pathname === "/searches" || (pathname.startsWith("/searches/") && !pathname.startsWith("/searches/new"));

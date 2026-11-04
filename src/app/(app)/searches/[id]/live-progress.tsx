@@ -236,7 +236,7 @@ export function LiveProgress({
       </div>
 
       <Card className="mt-6">
-        <CardHeader title="Websites that could not be crawled" description="The crawler arrives in step 3. Retry queues a website again." />
+        <CardHeader title="Websites that could not be crawled" description="Websites that failed after three retries, or whose robots file does not allow crawling. Retry queues a website again." />
         {failures.length === 0 ? (
           <CardBody>
             <p className="text-body text-fg-muted">No failed crawls.</p>

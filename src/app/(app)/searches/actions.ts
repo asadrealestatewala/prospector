@@ -234,7 +234,7 @@ export async function cancelSearch(id: string): Promise<ActionResult> {
   }
 }
 
-/** Failure panel Retry: queues one website crawl again (the crawler arrives in step 3). */
+/** Failure panel Retry: queues one website crawl again. The workers pick it up within about 15 seconds. */
 export async function retryCrawl(crawlJobId: string): Promise<ActionResult> {
   try {
     const actor = await requireRole("admin", "lead_expert");
@@ -242,7 +242,7 @@ export async function retryCrawl(crawlJobId: string): Promise<ActionResult> {
     const supabase = await createSupabaseServerClient();
     const { data, error } = await supabase
       .from("crawl_jobs")
-      .update({ status: "queued", error_reason: null, retries: 0, started_at: null, finished_at: null })
+      .update({ status: "queued", error_reason: null, retries: 0, started_at: null, finished_at: null, job_id: null, enqueued_at: null })
       .eq("id", crawlJobId)
       .in("status", ["failed", "blocked_by_robots"])
       .select("id, search_id")
@@ -250,7 +250,7 @@ export async function retryCrawl(crawlJobId: string): Promise<ActionResult> {
     if (error) throw error;
     if (!data) return { ok: false, error: "That crawl is not in a failed state." };
     await writeAudit(actor, "crawl.retried", "crawl_job", crawlJobId);
-    return { ok: true, message: "Website queued to crawl again." };
+    return { ok: true, message: "Website queued to crawl again. It starts within a few seconds." };
   } catch (e) {
     return fail(e);
   }
