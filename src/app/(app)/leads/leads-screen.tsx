@@ -3,7 +3,7 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import * as DM from "@radix-ui/react-dropdown-menu";
-import { Ban, Bookmark, Columns3, Contact, Copy, Download, Mail, MessageCircle, Search, Tag, Trash2, UserRound, X } from "lucide-react";
+import { Ban, Bookmark, Columns3, Contact, Copy, Download, MailCheck, Mail, MessageCircle, Search, Tag, Trash2, UserRound, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { ConfirmDialog, Dialog, DialogContent } from "@/components/ui/dialog";
@@ -17,7 +17,7 @@ import { LEAD_STATUS, LEAD_STATUSES, CONSENT_LABEL } from "@/lib/engine/labels";
 import { FILTER_KEYS, filtersToParams, type LeadFilters } from "@/lib/leads/filters";
 import { LEAD_COLUMN_LABELS, LEAD_COLUMNS_COOKIE } from "@/lib/leads/columns";
 import { formatPkDate, formatPkDateTime } from "@/lib/utils";
-import { addLeadsToDnc, addTags, assignOwner, changeStatus, deleteLeads, deleteView, saveView } from "./actions";
+import { addLeadsToDnc, addTags, assignOwner, changeStatus, deleteLeads, deleteView, saveView, verifyLeadEmails } from "./actions";
 
 export type LeadRow = {
   id: string;
@@ -72,6 +72,7 @@ export function LeadsScreen({
   views,
   hidden: initialHidden,
   canDelete,
+  canVerify,
 }: {
   rows: LeadRow[];
   total: number;
@@ -86,6 +87,7 @@ export function LeadsScreen({
   views: View[];
   hidden: string[];
   canDelete: boolean;
+  canVerify: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -268,6 +270,11 @@ export function LeadsScreen({
               <Button size="sm" onClick={() => setDialog({ kind: "tags", ids })}>
                 <Tag /> Add tags
               </Button>
+              {canVerify ? (
+                <Button size="sm" loading={busy} disabled={busy} onClick={() => run(() => verifyLeadEmails(ids))}>
+                  <MailCheck /> Verify emails
+                </Button>
+              ) : null}
               <Button size="sm" onClick={() => setDialog({ kind: "dnc", ids })}>
                 <Ban /> Add to do-not-contact
               </Button>

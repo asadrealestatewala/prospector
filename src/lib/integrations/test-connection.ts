@@ -1,6 +1,7 @@
 import "server-only";
 import { getPlainSetting, getSecret } from "@/lib/integrations/settings-store";
 import type { IntegrationId } from "@/lib/integrations/catalog";
+import { isProviderId, ProviderError, verifyWithProvider } from "@/lib/engine/email-verify";
 
 export type TestResult = { ok: boolean; message: string };
 
@@ -80,6 +81,22 @@ async function testResend(): Promise<TestResult> {
   return { ok: false, message: `Resend refused the key (${status}): ${msg}` };
 }
 
+/** Checks one address the Admin types, which uses one credit at the service. */
+async function testEmailVerification(target?: string): Promise<TestResult> {
+  const provider = await getPlainSetting<string>("email_verification.provider");
+  const apiKey = await getSecret("email_verification.api_key");
+  if (!isProviderId(provider)) return { ok: false, message: "Choose the verification service first." };
+  if (!apiKey) return { ok: false, message: "Add the API key first." };
+  const email = (target ?? "").trim();
+  if (!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(email)) return { ok: false, message: "Type an address to check." };
+  try {
+    const v = await verifyWithProvider(provider, apiKey, email);
+    return { ok: true, message: `Connected. ${email} is ${v.result}: ${v.detail}` };
+  } catch (e) {
+    return { ok: false, message: e instanceof ProviderError ? e.message : "The verification service could not be reached." };
+  }
+}
+
 /** BotLinkd documents only send endpoints, so the test sends one short text to the Admin's own number. */
 async function testBotlinkd(target?: string): Promise<TestResult> {
   const appKey = await getSecret("botlinkd.app_key");
@@ -110,6 +127,8 @@ export async function testIntegration(id: IntegrationId, target?: string): Promi
         return await testResend();
       case "botlinkd":
         return await testBotlinkd(target);
+      case "email_verification":
+        return await testEmailVerification(target);
     }
   } catch (e) {
     const timeout = e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");

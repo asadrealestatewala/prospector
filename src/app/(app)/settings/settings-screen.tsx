@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList } from "@/components/ui/tabs";
 import type { CityGroup } from "@/lib/engine/cities";
 import { DefaultsTab, type ScoringRules } from "./defaults-tab";
 import { Button } from "@/components/ui/button";
-import { Field, Input } from "@/components/ui/input";
+import { Field, Input, Select } from "@/components/ui/input";
 import { StatusChip } from "@/components/ui/chips";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ConfirmDialog } from "@/components/ui/dialog";
@@ -127,7 +127,7 @@ function SecretInput({ name, label, hint, row, disabled }: { name: SecretKey; la
   );
 }
 
-function PlainInput({ name, label, hint, row }: { name: string; label: string; hint: string; row?: SettingRow }) {
+function PlainInput({ name, label, hint, row, options }: { name: string; label: string; hint: string; row?: SettingRow; options?: { value: string; label: string }[] }) {
   const router = useRouter();
   const initial = typeof row?.value === "string" ? row.value : "";
   const [value, setValue] = React.useState(initial);
@@ -136,7 +136,14 @@ function PlainInput({ name, label, hint, row }: { name: string; label: string; h
   return (
     <Field label={label} htmlFor={id} hint={hint}>
       <div className="flex gap-2">
-        <Input id={id} value={value} onChange={(e) => setValue(e.target.value)} className="min-w-0 flex-1" />
+        {options ? (
+          <Select id={id} value={value} onChange={(e) => setValue(e.target.value)} className="min-w-0 flex-1">
+            <option value="">Not chosen</option>
+            {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </Select>
+        ) : (
+          <Input id={id} value={value} onChange={(e) => setValue(e.target.value)} className="min-w-0 flex-1" />
+        )}
         <Button
           type="button"
           variant="secondary"
@@ -183,13 +190,13 @@ function IntegrationCard({ integration, rows, disabled, extra }: { integration: 
           <SecretInput key={s.key} name={s.key} label={s.label} hint={s.hint} row={rows.get(s.key)} disabled={disabled} />
         ))}
         {(integration.plain ?? []).map((p) => (
-          <PlainInput key={p.key} name={p.key} label={p.label} hint={p.hint} row={rows.get(p.key)} />
+          <PlainInput key={p.key} name={p.key} label={p.label} hint={p.hint} row={rows.get(p.key)} options={p.options} />
         ))}
         {extra}
         <div className="flex flex-col gap-3 border-t border-border pt-4">
           {integration.testNeedsTarget ? (
             <Field label={integration.testNeedsTarget.label} htmlFor={`${integration.id}-target`} hint={integration.testNeedsTarget.hint}>
-              <Input id={`${integration.id}-target`} inputMode="tel" placeholder="923001234567" value={target} onChange={(e) => setTarget(e.target.value)} className="max-w-60" />
+              <Input id={`${integration.id}-target`} inputMode={integration.id === "email_verification" ? "email" : "tel"} placeholder={integration.id === "email_verification" ? "you@yourdomain.com" : "923001234567"} value={target} onChange={(e) => setTarget(e.target.value)} className="max-w-60" />
             </Field>
           ) : null}
           <div className="flex flex-wrap items-center gap-3">
@@ -221,7 +228,7 @@ function IntegrationCard({ integration, rows, disabled, extra }: { integration: 
   );
 }
 
-export function SettingsScreen({ settings, webhookUrl, resendWebhookUrl, encryptionReady, scoring, cityGroups }: { settings: SettingRow[]; webhookUrl: string; resendWebhookUrl: string; encryptionReady: boolean; scoring: ScoringRules; cityGroups: CityGroup[] }) {
+export function SettingsScreen({ settings, webhookUrl, resendWebhookUrl, encryptionReady, scoring, cityGroups, autoVerify }: { settings: SettingRow[]; webhookUrl: string; resendWebhookUrl: string; encryptionReady: boolean; scoring: ScoringRules; cityGroups: CityGroup[]; autoVerify: boolean }) {
   const rows = new Map(settings.map((s) => [s.key, s]));
   return (
     <>
@@ -237,7 +244,7 @@ export function SettingsScreen({ settings, webhookUrl, resendWebhookUrl, encrypt
           ]}
         />
         <TabsContent value="defaults" className="flex flex-col gap-6">
-          <DefaultsTab scoring={scoring} groups={cityGroups} />
+          <DefaultsTab scoring={scoring} groups={cityGroups} autoVerify={autoVerify} />
           <p className="text-helper text-fg-muted">Product price lines and follow-up gaps are added here in step 8, with the pipeline and follow-ups.</p>
         </TabsContent>
         <TabsContent value="integrations" className="flex flex-col gap-6">

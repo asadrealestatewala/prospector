@@ -3,7 +3,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  Ban, CalendarClock, Clock, ExternalLink, Globe, Mail, MapPin, MessageCircle, NotebookPen, Pencil, Phone, Plus, Star, Tag, Trash2, X,
+  Ban, CalendarClock, Clock, Download, ExternalLink, Globe, Mail, MailCheck, MapPin, MessageCircle, NotebookPen, Pencil, Phone, Plus, Star, Tag, Trash2, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
@@ -13,7 +13,7 @@ import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { toast } from "@/components/ui/toaster";
 import { CONSENT_LABEL, LEAD_STATUS, LEAD_STATUSES, type LeadStatus } from "@/lib/engine/labels";
 import { cn, formatPkDateTime } from "@/lib/utils";
-import { addLeadsToDnc, addTags, assignOwner, changeStatus, removeTag } from "../actions";
+import { addLeadsToDnc, addTags, assignOwner, changeStatus, removeTag, verifyLeadEmails } from "../actions";
 import { addContact, addNote, makePrimary, removeContact, updateLeadInfo, updatePlan } from "./actions";
 
 type Lead = {
@@ -48,7 +48,7 @@ type Lead = {
   owner: { id: string; full_name: string } | null;
   source: { id: string; name: string } | null;
 };
-type ContactRow = { id: string; kind: "email" | "phone" | "whatsapp"; value: string; label: string | null; source: string; source_url: string | null; verification: string; consent_state: string; is_primary: boolean; blocked: boolean };
+type ContactRow = { id: string; kind: "email" | "phone" | "whatsapp"; value: string; label: string | null; source: string; source_url: string | null; verification: string; verification_detail: string | null; verify_requested_at: string | null; consent_state: string; is_primary: boolean; blocked: boolean };
 type Social = { id: string; platform: string; url: string };
 type Crawl = { id: string; url: string; status: string; pages_visited: number; pages: unknown; error_reason: string | null; finished_at: string | null };
 export type TimelineItem = { id: string; at: string; kind: "note" | "call" | "status" | "edit" | "email" | "whatsapp"; title: string; body: string | null; by: string | null; from?: string | null; to?: string };
@@ -70,6 +70,8 @@ export function LeadDetail({
   timeline,
   owners,
   canSeeLeads,
+  canVerify,
+  canSeeConsent,
 }: {
   lead: Lead;
   contacts: ContactRow[];
@@ -78,6 +80,8 @@ export function LeadDetail({
   timeline: TimelineItem[];
   owners: { id: string; full_name: string }[];
   canSeeLeads: boolean;
+  canVerify: boolean;
+  canSeeConsent: boolean;
 }) {
   const router = useRouter();
   const [busy, setBusy] = React.useState<string | null>(null);
@@ -194,6 +198,15 @@ export function LeadDetail({
               ) : null}
               <ContactGroup title="Phone numbers" items={phones} leadId={lead.id} run={run} />
               <ContactGroup title="Emails" items={emails} leadId={lead.id} run={run} showVerification />
+              {canVerify && emails.length ? (
+                <div className="flex flex-wrap gap-2">
+                  {emails.some((e) => e.verification === "unverified" && !e.verify_requested_at) ? (
+                    <Button size="sm" loading={busy === "verify"} onClick={() => run("verify", () => verifyLeadEmails([lead.id]))}><MailCheck /> Verify emails</Button>
+                  ) : !emails.some((e) => e.verify_requested_at) ? (
+                    <Button size="sm" variant="ghost" loading={busy === "verify"} onClick={() => run("verify", () => verifyLeadEmails([lead.id], true))}><MailCheck /> Check again</Button>
+                  ) : null}
+                </div>
+              ) : null}
               <ContactGroup title="WhatsApp" items={whatsapps} leadId={lead.id} run={run} />
               <Button size="sm" className="self-start" onClick={() => setContactOpen(true)}><Plus /> Add contact</Button>
               {social.length ? (
@@ -300,7 +313,14 @@ export function LeadDetail({
           </Card>
 
           <Card>
-            <CardHeader title="Consent" />
+            <CardHeader
+              title="Consent"
+              action={canSeeConsent ? (
+                <Button size="sm" variant="ghost" asChild>
+                  <a href={`/consent-log/export?lead=${lead.id}`}><Download /> Export</a>
+                </Button>
+              ) : undefined}
+            />
             <CardBody className="flex flex-col gap-2 text-body">
               <div className="flex items-center justify-between"><span className="inline-flex items-center gap-2"><Mail className="size-4" /> Email</span><ConsentChip state={consent("email")} /></div>
               <div className="flex items-center justify-between"><span className="inline-flex items-center gap-2"><MessageCircle className="size-4" /> WhatsApp</span><ConsentChip state={consent("whatsapp")} /></div>
@@ -365,9 +385,15 @@ function ContactGroup({ title, items, leadId, run, showVerification }: { title: 
             <span className={cn("tabular break-all", c.blocked && "text-fg-muted line-through")}>{c.value}</span>
             {c.kind === "whatsapp" ? <WhatsAppChip /> : null}
             {showVerification ? (
-              <StatusChip tone={c.verification === "valid" ? "success" : c.verification === "risky" ? "warning" : c.verification === "invalid" ? "error" : "neutral"}>
-                {c.verification === "valid" ? "Verified" : c.verification === "risky" ? "Risky" : c.verification === "invalid" ? "Invalid" : "Not checked"}
-              </StatusChip>
+              c.verify_requested_at ? (
+                <StatusChip tone="info">Checking</StatusChip>
+              ) : (
+                <span title={c.verification_detail ?? undefined}>
+                  <StatusChip tone={c.verification === "valid" ? "success" : c.verification === "risky" ? "warning" : c.verification === "invalid" ? "error" : "neutral"}>
+                    {c.verification === "valid" ? "Verified" : c.verification === "risky" ? "Risky" : c.verification === "invalid" ? "Invalid" : "Not checked"}
+                  </StatusChip>
+                </span>
+              )
             ) : null}
             {c.blocked ? <StatusChip tone="error">Do not contact</StatusChip> : null}
             {c.is_primary && items.length > 1 ? <span className="text-helper text-fg-muted">Main</span> : null}
@@ -379,6 +405,7 @@ function ContactGroup({ title, items, leadId, run, showVerification }: { title: 
                 <Trash2 className="size-3.5" />
               </button>
             </span>
+            {showVerification && c.verification_detail && !c.verify_requested_at ? <p className="w-full text-helper text-fg-muted">{c.verification_detail}</p> : null}
             {c.source_url ? <p className="w-full truncate text-helper text-fg-muted">Found on {c.source_url}</p> : c.source === "google_listing" ? <p className="w-full text-helper text-fg-muted">From the Google listing</p> : null}
           </li>
         ))}

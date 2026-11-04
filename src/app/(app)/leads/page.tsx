@@ -55,6 +55,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
       views={(views ?? []).map((v) => ({ ...v, mine: v.user_id === user.id }))}
       hidden={hidden}
       canDelete={["admin", "manager", "lead_expert"].includes(user.role)}
+      canVerify={["admin", "lead_expert"].includes(user.role)}
     />
   );
 }

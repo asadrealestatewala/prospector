@@ -4,9 +4,10 @@ export type SecretKey =
   | "google.custom_search_api_key"
   | "resend.api_key"
   | "botlinkd.app_key"
-  | "botlinkd.auth_key";
+  | "botlinkd.auth_key"
+  | "email_verification.api_key";
 
-export type IntegrationId = "google_places" | "google_search" | "resend" | "botlinkd";
+export type IntegrationId = "google_places" | "google_search" | "resend" | "botlinkd" | "email_verification";
 
 export type Integration = {
   id: IntegrationId;
@@ -14,7 +15,7 @@ export type Integration = {
   description: string;
   secrets: { key: SecretKey; label: string; hint: string }[];
   /** Plain (non-secret) settings the integration needs. */
-  plain?: { key: string; label: string; hint: string }[];
+  plain?: { key: string; label: string; hint: string; options?: { value: string; label: string }[] }[];
   /** True when the test needs the Admin to type a destination, such as their own WhatsApp number. */
   testNeedsTarget?: { label: string; hint: string };
 };
@@ -51,6 +52,25 @@ export const INTEGRATIONS: Integration[] = [
       label: "Your own WhatsApp number",
       hint: "BotLinkd has no key-check endpoint, so the test sends one short message to this number.",
     },
+  },
+  {
+    id: "email_verification",
+    name: "Email verification",
+    description: "Checks addresses before sending. Free checks (format, mail server) always run first; only addresses that pass are sent to the service.",
+    plain: [
+      {
+        key: "email_verification.provider",
+        label: "Service",
+        hint: "Pick the service you have an account with. Enter its price per check on the Costs screen.",
+        options: [
+          { value: "millionverifier", label: "MillionVerifier" },
+          { value: "zerobounce", label: "ZeroBounce" },
+          { value: "neverbounce", label: "NeverBounce" },
+        ],
+      },
+    ],
+    secrets: [{ key: "email_verification.api_key", label: "API key", hint: "From the verification service's dashboard." }],
+    testNeedsTarget: { label: "An address to check", hint: "The test checks this one address, which uses one credit." },
   },
 ];
 
