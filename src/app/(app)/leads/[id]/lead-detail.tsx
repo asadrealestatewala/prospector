@@ -229,9 +229,19 @@ export function LeadDetail({
                   <ul className="flex flex-col gap-0.5 text-helper">{hints.map(([k, v]) => <li key={k}><span className="font-medium">{k.replaceAll("_", " ")}:</span> {Array.isArray(v) ? v.join(", ") : String(v)}</li>)}</ul>
                 </div>
               ) : null}
-              {lastCrawl?.error_reason ? <p className="text-helper text-error">{lastCrawl.error_reason}</p> : null}
+              {lastCrawl?.error_reason ? (
+                <p className={cn("text-helper", lastCrawl.status === "done" || lastCrawl.status === "blocked_by_robots" ? "text-fg-muted" : "text-error")}>{lastCrawl.error_reason}</p>
+              ) : null}
               {!lead.description && !pages.length && !hints.length && !lastCrawl?.error_reason ? (
-                <p className="text-fg-muted">{lead.website ? "The website crawler arrives in step 3." : "This business has no website."}</p>
+                <p className="text-fg-muted">
+                  {!lead.website
+                    ? "This business has no website."
+                    : !lastCrawl
+                      ? "The website was not crawled. Turn on automatic crawling in the search options to crawl new leads."
+                      : lastCrawl.status === "done"
+                        ? "The website was crawled, but it had no description or hints."
+                        : "The website is waiting to be crawled."}
+                </p>
               ) : null}
             </CardBody>
           </Card>

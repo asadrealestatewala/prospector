@@ -6,8 +6,13 @@ import { Queue, type ConnectionOptions } from "bullmq";
  */
 export const PLACES_QUEUE = "places-search";
 export const MAINTENANCE_QUEUE = "maintenance";
+export const CRAWL_QUEUE = "website-crawl";
 
 export type PlacesJob = { searchCityId: string };
+export type CrawlJob = { crawlJobId: string };
+
+/** SRS 8.3: a website is tried once and retried three times, then marked failed. */
+export const CRAWL_ATTEMPTS = 4;
 
 export function redisConnection(): ConnectionOptions {
   const url = new URL(process.env.REDIS_URL || "redis://127.0.0.1:6379");
@@ -22,7 +27,7 @@ export function redisConnection(): ConnectionOptions {
   };
 }
 
-const g = globalThis as unknown as { __placesQueue?: Queue<PlacesJob> };
+const g = globalThis as unknown as { __placesQueue?: Queue<PlacesJob>; __crawlQueue?: Queue<CrawlJob> };
 
 export function placesQueue(): Queue<PlacesJob> {
   if (!g.__placesQueue) {
@@ -39,22 +44,50 @@ export function placesQueue(): Queue<PlacesJob> {
   return g.__placesQueue;
 }
 
-/** One job per city row. The attempt number keeps a resumed city from colliding with its old job. */
-export async function enqueueCities(cityIds: string[], attempt: string) {
-  if (cityIds.length === 0) return;
-  const add = placesQueue().addBulk(
-    cityIds.map((id) => ({ name: "city", data: { searchCityId: id }, opts: { jobId: `city-${id}-${attempt}` } })),
+export function crawlQueue(): Queue<CrawlJob> {
+  if (!g.__crawlQueue) {
+    g.__crawlQueue = new Queue<CrawlJob>(CRAWL_QUEUE, {
+      connection: redisConnection(),
+      defaultJobOptions: {
+        attempts: CRAWL_ATTEMPTS,
+        backoff: { type: "exponential", delay: 60_000 },
+        removeOnComplete: { age: 7 * 24 * 3600, count: 20000 },
+        removeOnFail: { age: 30 * 24 * 3600 },
+      },
+    });
+  }
+  return g.__crawlQueue;
+}
+
+/** One job per crawl row; the hand-over time keeps a retried crawl from colliding with its old job. */
+export async function enqueueCrawls(rows: { id: string; enqueuedAt: string }[]) {
+  if (rows.length === 0) return;
+  await withTimeout(
+    crawlQueue().addBulk(
+      rows.map((r) => ({ name: "crawl", data: { crawlJobId: r.id }, opts: { jobId: `crawl-${r.id}-${new Date(r.enqueuedAt).getTime()}` } })),
+    ),
   );
+}
+
+async function withTimeout<T>(p: Promise<T>): Promise<T> {
   // Redis being down must not leave the screen waiting forever.
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => reject(new QueueUnavailableError()), 8000);
   });
   try {
-    await Promise.race([add, timeout]);
+    return await Promise.race([p, timeout]);
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** One job per city row. The attempt number keeps a resumed city from colliding with its old job. */
+export async function enqueueCities(cityIds: string[], attempt: string) {
+  if (cityIds.length === 0) return;
+  await withTimeout(
+    placesQueue().addBulk(cityIds.map((id) => ({ name: "city", data: { searchCityId: id }, opts: { jobId: `city-${id}-${attempt}` } }))),
+  );
 }
 
 export class QueueUnavailableError extends Error {

@@ -60,6 +60,8 @@ Supabase environment variables do.
 | `APP_URL` | Public address of Prospector, used in email links and webhook addresses |
 | `REDIS_URL` | Redis for the background queues. Default `redis://127.0.0.1:6379` |
 | `PLACES_CONCURRENCY` | How many cities the search worker runs at once. Default `3` |
+| `CRAWL_CONCURRENCY` | How many websites the crawler visits at once. Default `5` |
+| `CRAWLER_USER_AGENT` | Optional. The name the crawler sends to websites; robots files are matched on `ProspectorBot` |
 
 Google, Resend and BotLinkd keys are **not** environment variables. An Admin enters them on the
 Settings screen, where they are encrypted with AES-256-GCM and only the last four characters are shown.
@@ -69,7 +71,7 @@ Settings screen, where they are encrypted with AES-256-GCM and only the last fou
 ```bash
 npm run typecheck   # TypeScript
 npm run lint        # ESLint
-npm test            # unit tests (encryption, lockout, cost maths, search estimates, places worker)
+npm test            # unit tests (encryption, lockout, cost maths, search estimates, places and crawl workers, a local test website)
 npm run db:test     # applies every migration to a throwaway Postgres and runs the SQL checks in supabase/tests
 npm run build       # production build
 ```
@@ -94,3 +96,23 @@ Before the first search an Admin must, once:
 Searches are blocked with a clear message until the price and a budget are set (CLAUDE.md: a rate
 that is not set blocks spend). The worker checks the budget again before every Google call and pauses
 the search if it would go over.
+
+## Website crawler (step 3)
+
+When "Crawl websites automatically" is on, every new lead with a website gets a crawl. The workers hand
+queued crawls to the `website-crawl` queue every 15 seconds and visit `CRAWL_CONCURRENCY` sites at once.
+
+- Each crawl reads the site's robots file first (as `ProspectorBot`). If the homepage is not allowed the
+  crawl is marked "blocked by robots"; pages the file does not allow are skipped.
+- It visits the homepage and up to five contact, about, team and location pages on the same site.
+- It saves emails (including Cloudflare-protected ones), phone and WhatsApp numbers, Facebook, Instagram,
+  LinkedIn, YouTube, TikTok and X profiles, a short description, and product hints (class levels and exam
+  boards for Classwell, services and animals for Vetlin, social platforms and website features for Postwala).
+  Each contact keeps the page it came from and gets a "collected" consent log entry.
+- A website that fails is tried three more times, a few minutes apart, then shows in the failure panel on
+  Live Progress with the reason and a Retry button.
+- A "website" that is really a Facebook page or a link page is saved as a social link and not crawled.
+- Addresses that point to a private network (for example `127.0.0.1`) are refused, so a listing cannot make
+  the crawler reach services inside the server.
+
+The crawler costs nothing per call, so it has no budget check.
